@@ -17,6 +17,7 @@ export interface ToolsInjected {
   ensure: () => Promise<void>
   refresh: () => Promise<void>
   retry: () => Promise<void>
+  retryStars: () => Promise<void>
   dismissError: () => void
   diagnose: (issues: readonly string[]) => void
   resume: () => void
@@ -33,11 +34,12 @@ function StarButton({ turn, useTools, ensure, star, t }: Pick<UserProps, 'turn' 
   const starred = useTools(state => state.starredTurns.includes(turn))
   const pending = useTools(state => state.busyTurns.includes(turn))
   const loaded = useTools(state => state.loaded)
-  useEffect(() => { void ensure() }, [ensure])
+  const available = useTools(state => state.available)
+  useEffect(() => { if (available) void ensure() }, [ensure, available])
   const label = t(starred ? 'unstar' : 'star')
   return <Tooltip portal label={label} side="bottom">
     <button type="button" className={css.action} aria-label={label} aria-pressed={starred}
-      data-starred={starred || undefined} disabled={pending || !loaded} onClick={() => { void star(turn) }}>
+      data-starred={starred || undefined} disabled={!available || pending || !loaded} onClick={() => { void star(turn) }}>
       <span aria-hidden="true" className={css.star}>{starred ? '★' : '☆'}</span>
     </button>
   </Tooltip>
@@ -46,13 +48,14 @@ function StarButton({ turn, useTools, ensure, star, t }: Pick<UserProps, 'turn' 
 /** @param props - durable human-message target. @returns star and edit actions next to Copy. */
 export function UserActions(props: UserProps) {
   const editing = props.useTools(state => state.editing?.pending === true)
+  const available = props.useTools(state => state.available)
   const canStar = props.useAccess('conversationTools/star')
   const canEdit = props.useAccess('conversationTools/edit')
   return <>
     {canStar && <StarButton {...props} />}
     {canEdit && <Tooltip portal label={props.t('edit')} side="bottom">
-      <button type="button" className={css.action} aria-label={props.t('edit')} aria-disabled={editing}
-        onClick={() => { if (!editing) props.begin(props.messageId, props.text) }}>
+      <button type="button" className={css.action} aria-label={props.t('edit')} disabled={!available} aria-disabled={editing || !available}
+        onClick={() => { if (available && !editing) props.begin(props.messageId, props.text) }}>
         <IconEditOutlineRegular />
       </button>
     </Tooltip>}
@@ -95,13 +98,17 @@ export function EditComposerNotice({ useTools, useInput, cancel, resume, open, t
 }
 
 /** @param props - Session header seat. @returns a retained-version selector and recoverable load errors. */
-export function VersionPicker({ sessionId, useTools, ensure, refresh, open, retry, dismissError, t }: PropsRuntime<'conversation.session.header.utilities'> & Face) {
+export function VersionPicker({ sessionId, useTools, ensure, refresh, open, retry, retryStars, dismissError, t }: PropsRuntime<'conversation.session.header.utilities'> & Face) {
   const versions = useTools(state => state.versions)
+  const available = useTools(state => state.available)
+  const loadFailed = useTools(state => state.loadFailed)
+  const failedStars = useTools(state => state.failedStars)
   const error = useTools(state => state.error)
   const uiIssues = useTools(state => state.uiIssues)
-  useEffect(() => { void ensure() }, [ensure])
+  useEffect(() => { if (available) void ensure() }, [ensure, available])
   return <div className={css.versions}>
-    {versions.length > 1 && <select aria-label={t('versions')} value={sessionId}
+    {!available && <span className={css.error} role="status">{t('sessionUnavailable')}</span>}
+    {versions.length > 1 && <select aria-label={t('versions')} value={sessionId} disabled={!available}
       onFocus={() => { void refresh() }} onChange={(event) => {
         void open(SessionId(event.target.value))
       }}>
@@ -110,8 +117,14 @@ export function VersionPicker({ sessionId, useTools, ensure, refresh, open, retr
       </option>)}
     </select>}
     {uiIssues.length > 0 && <span className={css.error} role="status">{t('uiUnsupported')}</span>}
+    {loadFailed && <span className={css.error} role="alert">{t('loadFailed')}
+      <button type="button" onClick={() => { void refresh() }}>{t('retry')}</button>
+    </span>}
+    {failedStars.length > 0 && <span className={css.error} role="alert">{t('starFailed')}
+      <button type="button" onClick={() => { void retryStars() }}>{t('retry')}</button>
+    </span>}
     {error !== null && <span className={css.error} role="alert">
-      {t(error.kind === 'star' ? 'starFailed' : error.kind === 'open' ? 'openFailed' : error.kind === 'edit-start' ? 'beginFailed' : 'loadFailed')}
+      {t(error.kind === 'open' ? 'openFailed' : 'beginFailed')}
       {error.kind !== 'edit-start' && <button type="button" onClick={() => { void retry() }}>{t('retry')}</button>}
       <button type="button" onClick={dismissError}>{t('dismiss')}</button>
     </span>}

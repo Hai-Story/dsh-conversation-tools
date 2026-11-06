@@ -27,15 +27,44 @@ it('retries a failed star write with its original value, even after refreshing',
   const f = fixture()
   f.star.mockRejectedValueOnce(new Error('write failed'))
   await f.controller.star(1)
-  expect(f.controller.state.getSnapshot().error).toEqual({ kind: 'star', turn: 1, starred: true })
+  expect(f.controller.state.getSnapshot().failedStars).toEqual([{ turn: 1, starred: true }])
   // The first write may have reached the host before its reply was lost.
   f.snapshot.mockResolvedValueOnce({ ok: true, value: { starredTurns: [1], versions: [] } })
   await f.controller.refresh()
-  expect(f.controller.state.getSnapshot().error?.kind).toBe('star')
+  expect(f.controller.state.getSnapshot().failedStars).toEqual([{ turn: 1, starred: true }])
   await f.controller.retry()
   expect(f.star.mock.calls[0]).toEqual(f.star.mock.calls[1])
   expect(f.controller.state.getSnapshot().starredTurns).toEqual([1])
-  expect(f.controller.state.getSnapshot().error).toBeNull()
+  expect(f.controller.state.getSnapshot().failedStars).toEqual([])
+})
+
+it('preserves failed star writes across a failed load and unrelated navigation errors', async () => {
+  const f = fixture()
+  f.star.mockRejectedValueOnce(new Error('write failed'))
+  await f.controller.star(1)
+  f.snapshot.mockRejectedValueOnce(new Error('load failed'))
+  await f.controller.refresh()
+  f.controller.failOpen(SessionId('other'), new Error('open failed'))
+  expect(f.controller.state.getSnapshot()).toMatchObject({ loadFailed: true,
+    failedStars: [{ turn: 1, starred: true }], error: { kind: 'open', sessionId: 'other' } })
+  await f.controller.refresh()
+  f.controller.dismissError()
+  expect(f.controller.state.getSnapshot().failedStars).toEqual([{ turn: 1, starred: true }])
+  await f.controller.retry()
+  expect(f.star).toHaveBeenCalledTimes(2)
+  expect(f.star.mock.calls[0]).toEqual(f.star.mock.calls[1])
+  expect(f.controller.state.getSnapshot()).toMatchObject({ loadFailed: false, failedStars: [], error: null })
+})
+
+it('retains both failed turns and clears only the successful retry', async () => {
+  const f = fixture()
+  f.star.mockRejectedValueOnce(new Error('turn one failed')).mockRejectedValueOnce(new Error('turn two failed'))
+  await f.controller.star(1)
+  await f.controller.star(2)
+  expect(f.controller.state.getSnapshot().failedStars).toEqual([{ turn: 1, starred: true }, { turn: 2, starred: true }])
+  f.star.mockResolvedValueOnce({ ok: true, value: { starredTurns: [1], versions: [] } }).mockRejectedValueOnce(new Error('still unavailable'))
+  await f.controller.retry()
+  expect(f.controller.state.getSnapshot().failedStars).toEqual([{ turn: 2, starred: true }])
 })
 
 it('ignores a stale refresh that started while a star write was pending', async () => {

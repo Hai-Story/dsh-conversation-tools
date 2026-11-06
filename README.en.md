@@ -10,7 +10,7 @@
 
 ![Annotated overview: 1 Star an exchange, 2 Edit a message, 3 Find the rail marker](docs/images/readme/overview.en.png)
 
-[Install and update](#install-and-update) · [Star an exchange](#star-an-exchange) · [Edit a message](#edit-a-message) · [Previous versions](#previous-versions) · [Compatibility](#compatibility)
+[Install and update](#install-and-update) · [Star an exchange](#star-an-exchange) · [Edit a message](#edit-a-message) · [Previous versions](#previous-versions) · [Compatibility](#compatibility) · [Local recovery and privacy](#local-recovery-and-privacy)
 
 ## Install and update
 
@@ -19,13 +19,13 @@ Tested host: **DSH `0.2.2-rc.1` Web**. This is an independent plugin; no Harness
 Paste this source into DSH's **Add plugin** dialog:
 
 ```text
-github:Hai-Story/dsh-conversation-tools#v0.1.2
+github:Hai-Story/dsh-conversation-tools#v0.1.3
 ```
 
 Or install into the Web profile from the command line:
 
 ```sh
-dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.2"
+dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.3"
 ```
 
 Use the same source or command to update an older installation, then restart DSH. Release versions include `dist/`, so installation requires no build scripts.
@@ -62,6 +62,8 @@ Edit any sent human message, **including the first**. Click Edit to load the mes
 
 Regeneration uses the earlier context and the edited message. Existing attachments remain; the replaced answer and later messages are excluded from the new context. The working directory is preserved; the new version uses the current selections from the native permission and model menus.
 
+If an edit completes only partially, the error notice keeps its draft and created session. After reloading, choose **Restore edit draft** and resend the same text to recover. Cancelling restores the previous unsent draft. Any new draft or attachments you add before restoring take precedence.
+
 ## Previous versions
 
 Submitting an edit opens the new version. Use the version selector at the top of the conversation to return to an old version and read its original answers and later messages.
@@ -82,7 +84,15 @@ Versions are stored as separate Sessions in the same workspace and may also appe
 | Official Electron desktop | Installation not independently tested |
 | Other DSH versions | No compatibility claim yet |
 
+**Upgrade policy:** The plugin currently requires exactly `0.2.2-rc.1`. Check this page before upgrading DSH; an untested host version may reject the plugin as incompatible. We verify the interfaces, installation, edit recovery, and layouts before expanding support and publishing an update. Until then, keep a supported DSH version or disable the plugin before upgrading. Do not bypass the host's compatibility check.
+
 Editing changes text only; attachments cannot be added or removed. Other browser clients reconcile stars on reload or reconnect. The host's turn rail stays hidden for single-turn conversations. English and Simplified Chinese UI copy are included.
+
+## Local recovery and privacy
+
+DSH stores stars and version relationships in a local storage domain. If an edit completes only partially, the plugin also saves the edited text, the previous composer draft (including text references and quotes), and session/request identifiers in the current tab's `sessionStorage` for reload recovery. Ordinary edit drafts are not continuously saved there.
+
+Recovery records are unencrypted and accessible to scripts from the same origin; they are not uploaded as additional telemetry. Successful submission, cancellation, or starting another edit clears them. Retention after closing a tab is not guaranteed. If browser storage is blocked or full, the current page keeps its in-memory draft, but reload recovery may be unavailable.
 
 ## Development and contributions
 
@@ -102,7 +112,13 @@ pnpm exec playwright install chromium
 pnpm run test:browser
 ```
 
-The browser test installs the packed plugin into an isolated profile and starts stock npm DSH, substituting only the external model with a keyless fixture. It covers stars, first-message editing, future-context exclusion, version switching, reload, drafting during generation, button/Enter submission, IME confirmation, cancellation, duplicate submissions, native permission/model selection, and restoration of the prior draft. Temporary profiles and logs stay in Git-ignored `.artifacts/`.
+The browser test installs the packed plugin into an isolated profile and starts stock npm DSH, substituting only the external model with a keyless fixture. It covers stars, first-message editing, future-context exclusion, version switching, reload, drafting during generation, button/Enter submission, IME confirmation, cancellation, native permission/model selection, recovery with an empty or newer draft, Trajectory switching, and sidebar fullscreen/split/collapse layouts. Temporary profiles and logs stay in Git-ignored `.artifacts/`.
+
+For a release, update the package version and installation links in both READMEs, build and commit `dist/`, then merge after CI passes. Tag that commit as `v<version>`, create a GitHub Release with the tarball from `npm pack`, and verify the documented installation source:
+
+```sh
+DSH_TEST_INSTALL_SPEC=github:Hai-Story/dsh-conversation-tools#v0.1.3 pnpm run test:browser
+```
 
 Remote interface changes require updating types and descriptors in `src/protocol/` together and exercising end-to-end calls. Rebuild and commit `dist/` before release; CI checks that artifacts match the source.
 

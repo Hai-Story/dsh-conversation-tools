@@ -214,9 +214,9 @@ export default class ConversationTools extends TypertRemoteService {
       }
     }
     // A retry resumes the already-created version without interrupting newer source work.
-    await this.checkpoint(source.session)
     if (this.domain.table('edits').get(request.requestId) !== undefined) return applyEdit()
     if (this.unlinked.has(request.requestId)) return this.maintain(source, applyEdit)
+    await this.checkpoint(source.session)
     if (source.status !== 'idle') {
       // Invalid targets must not cancel an unrelated active task.
       using observation = await this.ctx.sessionQuery.observeSession(request.sessionId)

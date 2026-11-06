@@ -15,6 +15,7 @@ export const en = {
   recoveryUnavailable: 'The saved version could not be linked after the host restarted. Your edit text is kept; open the version to continue manually.',
   resumeEdit: 'Restore edit draft', beginFailed: 'Could not open the editor. Refresh this conversation and try again.',
   openFailed: 'Could not open this version. Try again.', dismiss: 'Dismiss',
+  sessionUnavailable: 'Conversation tools will be available when this conversation reconnects.',
   uiUnsupported: 'Some message tools cannot attach to this UI. Check the supported DSH version; details are in the console.',
 }
 /** Dictionary keys. */
@@ -34,6 +35,7 @@ export const zh: Record<ToolsKey, string> = {
   recoveryUnavailable: '宿主重启后无法自动补回版本关联。修改文本已保留，可打开已创建的会话手动继续',
   resumeEdit: '恢复编辑草稿', beginFailed: '无法打开编辑器，请刷新当前对话后重试',
   openFailed: '无法打开该版本，请重试', dismiss: '关闭提示',
+  sessionUnavailable: '会话重新连接后，对话工具将自动恢复',
   uiUnsupported: '部分消息工具无法接入当前界面，请检查支持的 DSH 版本；诊断详情已记录到控制台',
 }
 declare module '@deepseek-ai/dsh-client-ui-slots' {

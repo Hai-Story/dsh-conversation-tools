@@ -4,9 +4,10 @@ import { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { CommandClaim, DraftAttachmentId, DraftInput, DraftSnapshot, InputState } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { ToolsController } from '../src/client/controller.ts'
+import type { RecoveryStore, RecoveryTicket } from '../src/client/recovery.ts'
 import { EDIT_COMMAND, EDIT_TOKEN, NativeComposerEdit, type NativeEditInput } from '../src/client/native-composer.ts'
 
-function fixture() {
+function fixture(recovery?: RecoveryStore) {
   const attachment = 'saved-file' as DraftAttachmentId
   const initial: DraftSnapshot = { text: 'Original draft', references: [], quotes: [{ offset: 0, length: 8, text: 'Original' }] }
   let snapshot = initial
@@ -25,7 +26,7 @@ function fixture() {
     claim: { name: value.name, token: value.token } }); return true })
   const edit = vi.fn(async () => ({ ok: true as const, value: { sessionId: SessionId('child') } }))
   const report = vi.fn()
-  const controller = new ToolsController({ edit, snapshot: async () => ({ ok: true, value: { starredTurns: [], versions: [] } }), star: vi.fn() }, SessionId('source'), report)
+  const controller = new ToolsController({ edit, snapshot: async () => ({ ok: true, value: { starredTurns: [], versions: [] } }), star: vi.fn() }, SessionId('source'), report, recovery)
   const open = vi.fn(async () => {})
   const resolve = vi.fn(() => ({ input, claim, onDispose: () => () => {} }))
   const bridge = new NativeComposerEdit(controller, resolve, open, () => 'Failed')
@@ -45,6 +46,25 @@ it('keeps editing local and restores the full prior draft and attachments on can
   expect(f.input.state.getSnapshot().attachmentIds).toEqual([f.attachment])
   expect(f.open).not.toHaveBeenCalled()
   expect(f.input.focus).toHaveBeenCalledOnce()
+})
+
+it.each(['empty', 'stale-edit', 'new-text', 'new-attachment', 'new-command'] as const)('restores the appropriate previous draft after reloading with %s', mode => {
+  const previous: DraftSnapshot = { text: 'Original draft', references: [], quotes: [{ offset: 0, length: 8, text: 'Original' }] }
+  let ticket: RecoveryTicket | undefined = { previous, draft: { messageId: MessageId('message'), requestId: 'request' as never,
+    text: 'Edited text', pending: false, failed: true, failure: 'partial', recoverableSessionId: SessionId('child') } }
+  const f = fixture({ read: () => ticket, write: value => { ticket = value } })
+  const current: DraftSnapshot = mode === 'stale-edit' ? { text: EDIT_TOKEN + 'Edited text', command: { token: EDIT_TOKEN }, references: [] }
+    : mode === 'new-text' ? { text: 'New unsent draft', references: [] }
+    : mode === 'new-command' ? { text: '', command: { token: '/goal ' }, references: [] } : { text: '', references: [] }
+  f.input.setDraft(current)
+  if (mode !== 'new-attachment') f.input.removeAttachment(f.attachment)
+  f.bridge.resume()
+  expect(f.controller.state.getSnapshot().editing?.requestId).toBe('request')
+  expect(f.input.state.getSnapshot().claim?.name).toBe(EDIT_COMMAND)
+  f.bridge.cancel()
+  expect(f.input.draftSnapshot).toEqual(mode === 'empty' || mode === 'stale-edit' ? previous : current)
+  expect(f.input.state.getSnapshot().attachmentIds).toEqual(mode === 'new-attachment' ? [f.attachment] : [])
+  expect(ticket).toBeUndefined()
 })
 
 it('waits for native submission settlement before restoring the old draft and opening the new version', async () => {
