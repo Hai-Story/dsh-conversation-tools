@@ -1,0 +1,20 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "regions": {
+    "versions": {
+      "x": 1301,
+      "y": 11.5,
+      "width": 91,
+      "height": 27
+    },
+    "oldReply": {
+      "x": 485.296875,
+      "y": 446,
+      "width": 742.390625,
+      "height": 24
+    }
+  }
+}

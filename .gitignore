@@ -5,3 +5,7 @@ node_modules/
 coverage/
 *.tsbuildinfo
 .DS_Store
+
+# Local screenshot annotation environment
+.venv/
+__pycache__/
