@@ -1,5 +1,5 @@
 /** Optional controls in the existing message actions, inline body, and turn rail. */
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Button, IconEditOutlineRegular, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client'
@@ -8,6 +8,7 @@ import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ToolsView } from './controller.ts'
 import type {} from './locales.ts'
+import { EDIT_COMMAND } from './native-composer.ts'
 import css from './Controls.module.css'
 
 /** Session callbacks injected by the plugin; components never access services. */
@@ -15,6 +16,10 @@ export interface ToolsInjected {
   hooks: { tools: HostObservable<ToolsView> }
   ensure: () => Promise<void>
   refresh: () => Promise<void>
+  retry: () => Promise<void>
+  dismissError: () => void
+  diagnose: (issues: readonly string[]) => void
+  resume: () => void
   star: (turn: number) => Promise<void>
   begin: (messageId: MessageId, text: string) => void
   cancel: () => void
@@ -68,41 +73,47 @@ export function AssistantActions(props: AssistantProps) {
 }
 
 /** Compact edit-mode notice above the unchanged resident composer. */
-export function EditComposerNotice({ useTools, cancel, open, t }: PropsRuntime<'conversation.input.dock'> & Face) {
+export function EditComposerNotice({ useTools, useInput, cancel, resume, open, t }: PropsRuntime<'conversation.input.dock'> & Face) {
   const draft = useTools(state => state.editing)
-  const [openFailed, setOpenFailed] = useState(false)
+  const active = useInput(input => input.claim?.name === EDIT_COMMAND)
   if (draft === null) return null
+  const failureKey = draft.failure === 'busy' ? 'busy' : draft.failure === 'persistence' ? 'persistenceUnavailable'
+    : draft.failure === 'partial' ? 'partial' : draft.failure === 'recovery-unavailable' ? 'recoveryUnavailable' : 'failed'
   return <div className={css.editNotice} data-conversation-tools-editing aria-busy={draft.pending}>
     <div className={css.editLabel}><IconEditOutlineRegular size={14} />
       <span>{t(draft.pending ? 'saving' : 'editing')}</span>
       {!draft.pending && <span className={css.editHint}>{t('submitHint')}</span>}
     </div>
     <Button size="sm" disabled={draft.pending} onClick={cancel}>{t('cancelEdit')}</Button>
-    {draft.failed && <span role="alert" className={css.error}>{t('failed')}</span>}
+    {draft.failed && <span role="alert" className={css.error}>{t(failureKey)}</span>}
+    {!active && draft.recoverableSessionId !== undefined && <Button size="sm" onClick={resume}>{t('resumeEdit')}</Button>}
     {draft.recoverableSessionId !== undefined && <Button size="sm" onClick={() => {
       const id = draft.recoverableSessionId
-      if (id !== undefined) void open(id).catch(() => { setOpenFailed(true) })
+      if (id !== undefined) void open(id)
     }}>{t('recovery')}</Button>}
-    {openFailed && <span role="alert" className={css.error}>{t('loadFailed')}</span>}
   </div>
 }
 
 /** @param props - Session header seat. @returns a retained-version selector and recoverable load errors. */
-export function VersionPicker({ sessionId, useTools, ensure, refresh, open, t }: PropsRuntime<'conversation.session.header.utilities'> & Face) {
-  const [openFailed, setOpenFailed] = useState(false)
+export function VersionPicker({ sessionId, useTools, ensure, refresh, open, retry, dismissError, t }: PropsRuntime<'conversation.session.header.utilities'> & Face) {
   const versions = useTools(state => state.versions)
-  const failed = useTools(state => state.failed)
+  const error = useTools(state => state.error)
+  const uiIssues = useTools(state => state.uiIssues)
   useEffect(() => { void ensure() }, [ensure])
   return <div className={css.versions}>
     {versions.length > 1 && <select aria-label={t('versions')} value={sessionId}
       onFocus={() => { void refresh() }} onChange={(event) => {
-        setOpenFailed(false)
-        void open(SessionId(event.target.value)).catch(() => { setOpenFailed(true) })
+        void open(SessionId(event.target.value))
       }}>
       {versions.map((version, index) => <option key={version.sessionId} value={version.sessionId}>
         {t('version', { number: index + 1 })}
       </option>)}
     </select>}
-    {(failed || openFailed) && <span className={css.error} role="status">{t('loadFailed')} <button type="button" onClick={() => { void refresh() }}>{t('retry')}</button></span>}
+    {uiIssues.length > 0 && <span className={css.error} role="status">{t('uiUnsupported')}</span>}
+    {error !== null && <span className={css.error} role="alert">
+      {t(error.kind === 'star' ? 'starFailed' : error.kind === 'open' ? 'openFailed' : error.kind === 'edit-start' ? 'beginFailed' : 'loadFailed')}
+      {error.kind !== 'edit-start' && <button type="button" onClick={() => { void retry() }}>{t('retry')}</button>}
+      <button type="button" onClick={dismissError}>{t('dismiss')}</button>
+    </span>}
   </div>
 }

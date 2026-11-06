@@ -4,6 +4,9 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-workspace'
+import type { Session } from '@deepseek-ai/dsh-session'
+import { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
+import { setApprovalPolicy } from '@deepseek-ai/dsh-user-approval'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
@@ -24,9 +27,10 @@ declare module '@deepseek-ai/cordis' {
 
 /** Durable annotations and idempotent editing submissions. */
 export default class ConversationTools extends TypertRemoteService {
-  static inject = ['storageDomain', 'sessionController', 'sessionQuery', 'sessions', 'agents', 'workingDirectory', 'remoteAccess', 'workspaceRegistry', 'permissionPresets']
+  static inject = ['storageDomain', 'sessionController', 'sessionQuery', 'sessions', 'workingDirectory', 'remoteAccess', 'workspaceRegistry', 'permissionPresets']
   private domain!: Domain<typeof conversationToolsDomain>
   private readonly pending = new Map<string, { fingerprint: string; operation: Promise<EditMessageResult> }>()
+  private readonly unlinked = new Map<string, EditRecord>()
   private closing = false
   private annotationTail: Promise<unknown> = Promise.resolve()
 
@@ -65,7 +69,7 @@ export default class ConversationTools extends TypertRemoteService {
       starredTurns: this.domain.table('stars').get(sessionId)?.turns ?? [],
       versions: [...family].filter(id => this.ctx.remoteAccess.allows({ kind: 'session', id }))
         .map(id => ({ sessionId: id, createdAt: edits.find(edit => edit.childSessionId === id)?.createdAt ?? 0 }))
-        .sort((a, b) => a.createdAt - b.createdAt),
+        .sort((a, b) => a.createdAt - b.createdAt || a.sessionId.localeCompare(b.sessionId)),
     }
   }
 
@@ -105,14 +109,20 @@ export default class ConversationTools extends TypertRemoteService {
     if (this.closing) return Promise.reject(new Error('Conversation tools are unloading'))
     if (request.text.trim() === '') return Promise.reject(new RemoteError('conversationTools/rejected', 'Message is empty', { reason: 'empty' }))
     const fingerprint = createHash('sha256').update(JSON.stringify([request.sessionId, request.messageId, request.text])).digest('hex')
-    const current = this.domain.table('edits').get(request.requestId)
+    const current = this.domain.table('edits').get(request.requestId) ?? this.unlinked.get(request.requestId)
     if (current !== undefined && current.fingerprint !== fingerprint) {
       return Promise.reject(new RemoteError('conversationTools/rejected', 'Retry content changed', { reason: 'request-conflict' }))
+    }
+    if (request.recoverySessionId !== undefined && current?.childSessionId !== request.recoverySessionId) {
+      return Promise.reject(new RemoteError('conversationTools/rejected', 'Saved version cannot be linked automatically; the draft is preserved', { reason: 'recovery-unavailable' }))
     }
     const pending = this.pending.get(request.requestId)
     if (pending !== undefined) return pending.fingerprint === fingerprint ? pending.operation
       : Promise.reject(new RemoteError('conversationTools/rejected', 'Retry content changed', { reason: 'request-conflict' }))
-    const operation = this.performEdit(request, fingerprint).finally(() => { this.pending.delete(request.requestId) })
+    const operation = this.performEdit(request, fingerprint).catch((error: unknown) => {
+      this.ctx.logger.warn('conversation-tools: edit failed', { sessionId: request.sessionId, requestId: request.requestId }, error)
+      throw error
+    }).finally(() => { this.pending.delete(request.requestId) })
     this.pending.set(request.requestId, { fingerprint, operation })
     return operation
   }
@@ -126,6 +136,20 @@ export default class ConversationTools extends TypertRemoteService {
     })
   }
 
+  /** Missing listeners are an unsupported persistence capability, not a failed disk write. */
+  private async checkpoint(session: Session): Promise<void> {
+    if (!await this.ctx.sessions.flush(session)) {
+      throw new RemoteError('conversationTools/rejected', 'Durable session storage is required for retained edit versions', { reason: 'persistence-unavailable' })
+    }
+  }
+
+  /** Catch only synchronous acquisition failure; errors inside the task keep their own classification. */
+  private maintain<T>(agent: Agent, task: () => Promise<T>): Promise<T> {
+    try { return agent.runMaintenance(task) } catch (error) {
+      throw new RemoteError('conversationTools/rejected', 'This conversation is busy; retry after the current operation finishes', { reason: 'busy' }, { cause: error })
+    }
+  }
+
   private async performEdit(request: EditMessageRequest, fingerprint: string): Promise<EditMessageResult> {
     const resolved = await this.ctx.sessionController.resolveAgent(request.sessionId)
     if ('error' in resolved) throw resolved.error
@@ -134,18 +158,26 @@ export default class ConversationTools extends TypertRemoteService {
       using observation = await this.ctx.sessionQuery.observeSession(request.sessionId)
       const plan = planMessageEdit(observation.events, request.messageId, request.text)
       if (plan === undefined) throw new RemoteError('conversationTools/rejected', 'Human message does not exist', { reason: 'missing-message' })
-      let record: EditRecord | undefined = this.domain.table('edits').get(request.requestId)
+      const stored = this.domain.table('edits').get(request.requestId)
+      let record = stored ?? this.unlinked.get(request.requestId)
       if (record === undefined) {
         const child = await this.createVersion(source, plan.beforeSeq)
         record = { sourceSessionId: request.sessionId, childSessionId: child.sessionId, fingerprint, createdAt: Date.now() }
-        try { await this.domain.table('edits').put(request.requestId, record) } catch (_error) {
-          throw new RemoteError('conversationTools/incomplete', 'Version created but its link could not be saved', { sessionId: child.sessionId, phase: 'link' })
+        this.unlinked.set(request.requestId, record)
+      }
+      if (stored === undefined) {
+        try { await this.domain.table('edits').put(request.requestId, record) } catch (error) {
+          throw new RemoteError('conversationTools/incomplete', 'Version created but its link could not be saved',
+            { sessionId: record.childSessionId, phase: 'link' }, { cause: error })
         }
-        const turns = this.domain.table('stars').get(request.sessionId)?.turns.filter(turn => turn < plan.turn) ?? []
-        await this.domain.table('stars').put(child.sessionId, { turns })
+        this.unlinked.delete(request.requestId)
       }
       const childId = record.childSessionId
       try {
+        if (this.domain.table('stars').get(childId) === undefined) {
+          const turns = this.domain.table('stars').get(request.sessionId)?.turns.filter(turn => turn < plan.turn) ?? []
+          await this.domain.table('stars').put(childId, { turns })
+        }
         const target = await this.ctx.sessionController.resolveAgent(childId)
         if ('error' in target) throw target.error
         const child = target.agent
@@ -154,7 +186,7 @@ export default class ConversationTools extends TypertRemoteService {
           event.type === 'user/message' ? event.data.source.kind === 'user' && 'rpcId' in event.data.source && event.data.source.rpcId === request.requestId
             : event.type === 'agent/inbox/spliced' && event.data.inserted.some(message => message.source.kind === 'user' && 'rpcId' in message.source && message.source.rpcId === request.requestId))
         if (!submitted) {
-          await child.runMaintenance(async () => {
+          await this.maintain(child, async () => {
             child.inbox.clear()
             const selection = source.model.current()
             if (selection !== undefined) child.model.select(selection)
@@ -163,25 +195,28 @@ export default class ConversationTools extends TypertRemoteService {
             else {
               const sandbox = observation.events.findLast(event => event.type === 'sandbox/mode')
               const approval = observation.events.findLast(event => event.type === 'approval/policy')
-              if (sandbox?.type === 'sandbox/mode') child.session.append('sandbox/mode', sandbox.data)
-              if (approval?.type === 'approval/policy') child.session.append('approval/policy', approval.data)
+              if (sandbox?.type === 'sandbox/mode') setSandboxMode(child.session, sandbox.data.mode)
+              if (approval?.type === 'approval/policy') setApprovalPolicy(child.session, approval.data.policy)
             }
             await this.ctx.workingDirectory.set(child, this.ctx.workingDirectory.get(source.session))
             const principal = principalOf(this.ctx.invocation)
             child.followup(createUserMessage({ content: plan.content, source: {
               kind: 'user', rpcId: request.requestId, ...(principal === undefined ? {} : { principal }),
             } }))
-            if (!await this.ctx.sessions.flush(child.session)) throw new Error('Edited message was not persisted')
+            await this.checkpoint(child.session)
           })
         }
-        if (!await this.ctx.sessions.flush(child.session)) throw new Error('Edited message was not persisted')
+        await this.checkpoint(child.session)
         return { sessionId: childId }
-      } catch (_error) {
-        throw new RemoteError('conversationTools/incomplete', 'Version preserved; retry to continue', { sessionId: childId, phase: 'submission' })
+      } catch (error) {
+        throw new RemoteError('conversationTools/incomplete', 'Version preserved; retry to continue',
+          { sessionId: childId, phase: 'submission' }, { cause: error })
       }
     }
     // A retry resumes the already-created version without interrupting newer source work.
+    await this.checkpoint(source.session)
     if (this.domain.table('edits').get(request.requestId) !== undefined) return applyEdit()
+    if (this.unlinked.has(request.requestId)) return this.maintain(source, applyEdit)
     if (source.status !== 'idle') {
       // Invalid targets must not cancel an unrelated active task.
       using observation = await this.ctx.sessionQuery.observeSession(request.sessionId)
@@ -190,8 +225,8 @@ export default class ConversationTools extends TypertRemoteService {
       }
       this.ctx.sessionController.cancel({ sessionId: request.sessionId })
       await source.whenIdle()
-      if (!await this.ctx.sessions.flush(source.session)) throw new Error('Stopped conversation was not persisted')
+      await this.checkpoint(source.session)
     }
-    return source.runMaintenance(applyEdit)
+    return this.maintain(source, applyEdit)
   }
 }

@@ -24,10 +24,12 @@ function fixture() {
   const claim = vi.fn((value: CommandClaim) => { claimed = value; update({ phase: 'claimed', draft: EDIT_TOKEN + snapshot.text,
     claim: { name: value.name, token: value.token } }); return true })
   const edit = vi.fn(async () => ({ ok: true as const, value: { sessionId: SessionId('child') } }))
-  const controller = new ToolsController({ edit, snapshot: async () => ({ ok: true, value: { starredTurns: [], versions: [] } }), star: vi.fn() }, SessionId('source'))
+  const report = vi.fn()
+  const controller = new ToolsController({ edit, snapshot: async () => ({ ok: true, value: { starredTurns: [], versions: [] } }), star: vi.fn() }, SessionId('source'), report)
   const open = vi.fn(async () => {})
-  const bridge = new NativeComposerEdit(controller, () => ({ input, claim, onDispose: () => () => {} }), open, () => 'Failed')
-  return { bridge, controller, edit, open, input, update, claim, initial, attachment, submit: (text: string) => claimed.submit(text, {} as never, []) }
+  const resolve = vi.fn(() => ({ input, claim, onDispose: () => () => {} }))
+  const bridge = new NativeComposerEdit(controller, resolve, open, () => 'Failed')
+  return { bridge, controller, edit, open, input, update, claim, resolve, report, initial, attachment, submit: (text: string) => claimed.submit(text, {} as never, []) }
 }
 
 it('keeps editing local and restores the full prior draft and attachments on cancellation', () => {
@@ -37,10 +39,12 @@ it('keeps editing local and restores the full prior draft and attachments on can
   expect(f.input.state.getSnapshot().claim?.name).toBe(EDIT_COMMAND)
   expect(f.input.state.getSnapshot().attachmentIds).toEqual([])
   expect(f.edit).not.toHaveBeenCalled()
+  vi.mocked(f.input.focus).mockClear()
   f.bridge.cancel()
   expect(f.input.draftSnapshot).toEqual(f.initial)
   expect(f.input.state.getSnapshot().attachmentIds).toEqual([f.attachment])
   expect(f.open).not.toHaveBeenCalled()
+  expect(f.input.focus).toHaveBeenCalledOnce()
 })
 
 it('waits for native submission settlement before restoring the old draft and opening the new version', async () => {
@@ -72,7 +76,55 @@ it('does not overwrite a native draft whose submission is already in flight', ()
   f.bridge.begin(MessageId('message'), 'Sent text')
   expect(f.input.draftSnapshot).toEqual(f.initial)
   expect(f.claim).not.toHaveBeenCalled()
-  expect(f.input.notify).toHaveBeenCalledWith('error', 'Failed')
+  expect(f.controller.state.getSnapshot().error).toEqual({ kind: 'edit-start' })
+})
+
+it('reports an unavailable composer without throwing or touching the prior draft', () => {
+  const f = fixture()
+  const error = new Error('Conversation is not retained')
+  f.resolve.mockImplementationOnce(() => { throw error })
+  expect(() => f.bridge.begin(MessageId('message'), 'Sent text')).not.toThrow()
+  expect(f.controller.state.getSnapshot().error).toEqual({ kind: 'edit-start' })
+  expect(f.report).toHaveBeenCalledWith('begin edit', error)
+  expect(f.input.draftSnapshot).toEqual(f.initial)
+  expect(f.input.state.getSnapshot().attachmentIds).toEqual([f.attachment])
+})
+
+it('restores the draft and attachments if claiming the native editor fails', () => {
+  const f = fixture()
+  f.claim.mockReturnValueOnce(false)
+  f.bridge.begin(MessageId('message'), 'Sent text')
+  expect(f.input.draftSnapshot).toEqual(f.initial)
+  expect(f.input.state.getSnapshot().attachmentIds).toEqual([f.attachment])
+  expect(f.controller.state.getSnapshot().error).toEqual({ kind: 'edit-start' })
+  expect(f.controller.state.getSnapshot().editing).toBeNull()
+})
+
+it('does not steal focus on disposal and ignores late submission completion', async () => {
+  const f = fixture()
+  const pending = Promise.withResolvers<{ ok: true; value: { sessionId: ReturnType<typeof SessionId> } }>()
+  f.edit.mockReturnValueOnce(pending.promise)
+  f.bridge.begin(MessageId('message'), 'Sent text')
+  const submitted = f.submit('Edited text')
+  vi.mocked(f.input.focus).mockClear()
+  f.bridge.dispose()
+  f.controller.dispose()
+  pending.resolve({ ok: true, value: { sessionId: SessionId('child') } })
+  await submitted
+  expect(f.input.draftSnapshot).toEqual(f.initial)
+  expect(f.input.focus).not.toHaveBeenCalled()
+  expect(f.open).not.toHaveBeenCalled()
+})
+
+it('keeps the saved child available when opening its completed edit fails', async () => {
+  const f = fixture()
+  f.open.mockRejectedValueOnce(new Error('Navigation failed'))
+  f.bridge.begin(MessageId('message'), 'Sent text')
+  await f.submit('Edited text')
+  f.input.setDraft('')
+  await vi.waitFor(() => expect(f.controller.state.getSnapshot().error).toEqual({ kind: 'open', sessionId: 'child' }))
+  expect(f.input.draftSnapshot).toEqual(f.initial)
+  expect(f.edit).toHaveBeenCalledOnce()
 })
 
 it('switching the edited message keeps the original composer draft and saved attachments', () => {

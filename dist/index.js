@@ -92,6 +92,8 @@ var __callDispose = (stack, error, hasError) => {
 import { createHash } from "node:crypto";
 import { Service } from "@deepseek-ai/cordis";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import { setSandboxMode } from "@deepseek-ai/dsh-sandbox-policy";
+import { setApprovalPolicy } from "@deepseek-ai/dsh-user-approval";
 import { Remote, RemoteError, TypertRemoteService, principalOf } from "@deepseek-ai/dsh-typert-protocol";
 
 // src/host/storage.ts
@@ -152,6 +154,7 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
     __runInitializers(_init, 5, this);
     __publicField(this, "domain");
     __publicField(this, "pending", /* @__PURE__ */ new Map());
+    __publicField(this, "unlinked", /* @__PURE__ */ new Map());
     __publicField(this, "closing", false);
     __publicField(this, "annotationTail", Promise.resolve());
   }
@@ -181,7 +184,7 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
     }
     return {
       starredTurns: this.domain.table("stars").get(sessionId2)?.turns ?? [],
-      versions: [...family].filter((id) => this.ctx.remoteAccess.allows({ kind: "session", id })).map((id) => ({ sessionId: id, createdAt: edits.find((edit) => edit.childSessionId === id)?.createdAt ?? 0 })).sort((a, b) => a.createdAt - b.createdAt)
+      versions: [...family].filter((id) => this.ctx.remoteAccess.allows({ kind: "session", id })).map((id) => ({ sessionId: id, createdAt: edits.find((edit) => edit.childSessionId === id)?.createdAt ?? 0 })).sort((a, b) => a.createdAt - b.createdAt || a.sessionId.localeCompare(b.sessionId))
     };
   }
   star(request) {
@@ -211,13 +214,19 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
     if (this.closing) return Promise.reject(new Error("Conversation tools are unloading"));
     if (request.text.trim() === "") return Promise.reject(new RemoteError("conversationTools/rejected", "Message is empty", { reason: "empty" }));
     const fingerprint = createHash("sha256").update(JSON.stringify([request.sessionId, request.messageId, request.text])).digest("hex");
-    const current = this.domain.table("edits").get(request.requestId);
+    const current = this.domain.table("edits").get(request.requestId) ?? this.unlinked.get(request.requestId);
     if (current !== void 0 && current.fingerprint !== fingerprint) {
       return Promise.reject(new RemoteError("conversationTools/rejected", "Retry content changed", { reason: "request-conflict" }));
     }
+    if (request.recoverySessionId !== void 0 && current?.childSessionId !== request.recoverySessionId) {
+      return Promise.reject(new RemoteError("conversationTools/rejected", "Saved version cannot be linked automatically; the draft is preserved", { reason: "recovery-unavailable" }));
+    }
     const pending = this.pending.get(request.requestId);
     if (pending !== void 0) return pending.fingerprint === fingerprint ? pending.operation : Promise.reject(new RemoteError("conversationTools/rejected", "Retry content changed", { reason: "request-conflict" }));
-    const operation = this.performEdit(request, fingerprint).finally(() => {
+    const operation = this.performEdit(request, fingerprint).catch((error) => {
+      this.ctx.logger.warn("conversation-tools: edit failed", { sessionId: request.sessionId, requestId: request.requestId }, error);
+      throw error;
+    }).finally(() => {
       this.pending.delete(request.requestId);
     });
     this.pending.set(request.requestId, { fingerprint, operation });
@@ -231,6 +240,20 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
       ...source.session.header.agentPreset === void 0 ? {} : { agentPreset: source.session.header.agentPreset }
     });
   }
+  /** Missing listeners are an unsupported persistence capability, not a failed disk write. */
+  async checkpoint(session) {
+    if (!await this.ctx.sessions.flush(session)) {
+      throw new RemoteError("conversationTools/rejected", "Durable session storage is required for retained edit versions", { reason: "persistence-unavailable" });
+    }
+  }
+  /** Catch only synchronous acquisition failure; errors inside the task keep their own classification. */
+  maintain(agent, task) {
+    try {
+      return agent.runMaintenance(task);
+    } catch (error) {
+      throw new RemoteError("conversationTools/rejected", "This conversation is busy; retry after the current operation finishes", { reason: "busy" }, { cause: error });
+    }
+  }
   async performEdit(request, fingerprint) {
     const resolved = await this.ctx.sessionController.resolveAgent(request.sessionId);
     if ("error" in resolved) throw resolved.error;
@@ -241,29 +264,41 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
         const observation = __using(_stack3, await this.ctx.sessionQuery.observeSession(request.sessionId));
         const plan = planMessageEdit(observation.events, request.messageId, request.text);
         if (plan === void 0) throw new RemoteError("conversationTools/rejected", "Human message does not exist", { reason: "missing-message" });
-        let record = this.domain.table("edits").get(request.requestId);
+        const stored = this.domain.table("edits").get(request.requestId);
+        let record = stored ?? this.unlinked.get(request.requestId);
         if (record === void 0) {
           const child = await this.createVersion(source, plan.beforeSeq);
           record = { sourceSessionId: request.sessionId, childSessionId: child.sessionId, fingerprint, createdAt: Date.now() };
+          this.unlinked.set(request.requestId, record);
+        }
+        if (stored === void 0) {
           try {
             await this.domain.table("edits").put(request.requestId, record);
-          } catch (_error4) {
-            throw new RemoteError("conversationTools/incomplete", "Version created but its link could not be saved", { sessionId: child.sessionId, phase: "link" });
+          } catch (error) {
+            throw new RemoteError(
+              "conversationTools/incomplete",
+              "Version created but its link could not be saved",
+              { sessionId: record.childSessionId, phase: "link" },
+              { cause: error }
+            );
           }
-          const turns = this.domain.table("stars").get(request.sessionId)?.turns.filter((turn) => turn < plan.turn) ?? [];
-          await this.domain.table("stars").put(child.sessionId, { turns });
+          this.unlinked.delete(request.requestId);
         }
         const childId = record.childSessionId;
         try {
           var _stack2 = [];
           try {
+            if (this.domain.table("stars").get(childId) === void 0) {
+              const turns = this.domain.table("stars").get(request.sessionId)?.turns.filter((turn) => turn < plan.turn) ?? [];
+              await this.domain.table("stars").put(childId, { turns });
+            }
             const target = await this.ctx.sessionController.resolveAgent(childId);
             if ("error" in target) throw target.error;
             const child = target.agent;
             const previous = __using(_stack2, await this.ctx.sessionQuery.observeSession(childId));
             const submitted = previous.events.some((event) => event.type === "user/message" ? event.data.source.kind === "user" && "rpcId" in event.data.source && event.data.source.rpcId === request.requestId : event.type === "agent/inbox/spliced" && event.data.inserted.some((message) => message.source.kind === "user" && "rpcId" in message.source && message.source.rpcId === request.requestId));
             if (!submitted) {
-              await child.runMaintenance(async () => {
+              await this.maintain(child, async () => {
                 child.inbox.clear();
                 const selection = source.model.current();
                 if (selection !== void 0) child.model.select(selection);
@@ -272,8 +307,8 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
                 else {
                   const sandbox = observation.events.findLast((event) => event.type === "sandbox/mode");
                   const approval = observation.events.findLast((event) => event.type === "approval/policy");
-                  if (sandbox?.type === "sandbox/mode") child.session.append("sandbox/mode", sandbox.data);
-                  if (approval?.type === "approval/policy") child.session.append("approval/policy", approval.data);
+                  if (sandbox?.type === "sandbox/mode") setSandboxMode(child.session, sandbox.data.mode);
+                  if (approval?.type === "approval/policy") setApprovalPolicy(child.session, approval.data.policy);
                 }
                 await this.ctx.workingDirectory.set(child, this.ctx.workingDirectory.get(source.session));
                 const principal = principalOf(this.ctx.invocation);
@@ -282,18 +317,23 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
                   rpcId: request.requestId,
                   ...principal === void 0 ? {} : { principal }
                 } }));
-                if (!await this.ctx.sessions.flush(child.session)) throw new Error("Edited message was not persisted");
+                await this.checkpoint(child.session);
               });
             }
-            if (!await this.ctx.sessions.flush(child.session)) throw new Error("Edited message was not persisted");
+            await this.checkpoint(child.session);
             return { sessionId: childId };
           } catch (_2) {
             var _error2 = _2, _hasError2 = true;
           } finally {
             __callDispose(_stack2, _error2, _hasError2);
           }
-        } catch (_error4) {
-          throw new RemoteError("conversationTools/incomplete", "Version preserved; retry to continue", { sessionId: childId, phase: "submission" });
+        } catch (error) {
+          throw new RemoteError(
+            "conversationTools/incomplete",
+            "Version preserved; retry to continue",
+            { sessionId: childId, phase: "submission" },
+            { cause: error }
+          );
         }
       } catch (_3) {
         var _error3 = _3, _hasError3 = true;
@@ -301,7 +341,9 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
         __callDispose(_stack3, _error3, _hasError3);
       }
     };
+    await this.checkpoint(source.session);
     if (this.domain.table("edits").get(request.requestId) !== void 0) return applyEdit();
+    if (this.unlinked.has(request.requestId)) return this.maintain(source, applyEdit);
     if (source.status !== "idle") {
       var _stack = [];
       try {
@@ -311,14 +353,14 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
         }
         this.ctx.sessionController.cancel({ sessionId: request.sessionId });
         await source.whenIdle();
-        if (!await this.ctx.sessions.flush(source.session)) throw new Error("Stopped conversation was not persisted");
+        await this.checkpoint(source.session);
       } catch (_) {
         var _error = _, _hasError = true;
       } finally {
         __callDispose(_stack, _error, _hasError);
       }
     }
-    return source.runMaintenance(applyEdit);
+    return this.maintain(source, applyEdit);
   }
 };
 _init = __decoratorStart(_b);
@@ -326,7 +368,7 @@ __decorateElement(_init, 1, "snapshot", _snapshot_dec, ConversationTools);
 __decorateElement(_init, 1, "star", _star_dec, ConversationTools);
 __decorateElement(_init, 1, "edit", _edit_dec, ConversationTools);
 __decoratorMetadata(_init, ConversationTools);
-__publicField(ConversationTools, "inject", ["storageDomain", "sessionController", "sessionQuery", "sessions", "agents", "workingDirectory", "remoteAccess", "workspaceRegistry", "permissionPresets"]);
+__publicField(ConversationTools, "inject", ["storageDomain", "sessionController", "sessionQuery", "sessions", "workingDirectory", "remoteAccess", "workspaceRegistry", "permissionPresets"]);
 export {
   ConversationTools as default
 };

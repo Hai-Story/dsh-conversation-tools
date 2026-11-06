@@ -9,7 +9,13 @@ export const en = {
   loadFailed: 'Could not load conversation annotations', retry: 'Retry',
   versions: 'Conversation versions', version: 'Version {number}',
   starFailed: 'Could not update star', recovery: 'Open saved version',
-  partial: 'A version was saved but could not be linked. Open it to continue; the original is preserved.',
+  partial: 'A version exists, but this edit is unfinished. Your draft is kept; send it again unchanged to recover.',
+  busy: 'This conversation is handling another operation. Your draft is kept; try again shortly.',
+  persistenceUnavailable: 'Durable conversation storage is unavailable. Check the DSH profile before retrying.',
+  recoveryUnavailable: 'The saved version could not be linked after the host restarted. Your edit text is kept; open the version to continue manually.',
+  resumeEdit: 'Restore edit draft', beginFailed: 'Could not open the editor. Refresh this conversation and try again.',
+  openFailed: 'Could not open this version. Try again.', dismiss: 'Dismiss',
+  uiUnsupported: 'Some message tools cannot attach to this UI. Check the supported DSH version; details are in the console.',
 }
 /** Dictionary keys. */
 export type ToolsKey = keyof typeof en
@@ -22,7 +28,13 @@ export const zh: Record<ToolsKey, string> = {
   loadFailed: '无法加载对话标记', retry: '重试',
   versions: '对话历史版本', version: '版本 {number}',
   starFailed: '星标更新失败', recovery: '打开已保存的版本',
-  partial: '新版本已保存，但历史关联未能写入。可打开新版本继续，原对话仍保留',
+  partial: '新会话已创建，但编辑尚未完成。草稿已保留，保持内容不变再次发送可恢复',
+  busy: '该对话正在处理其他操作，草稿已保留，请稍后重试',
+  persistenceUnavailable: '当前缺少会话持久化能力，请检查 DSH 配置后重试',
+  recoveryUnavailable: '宿主重启后无法自动补回版本关联。修改文本已保留，可打开已创建的会话手动继续',
+  resumeEdit: '恢复编辑草稿', beginFailed: '无法打开编辑器，请刷新当前对话后重试',
+  openFailed: '无法打开该版本，请重试', dismiss: '关闭提示',
+  uiUnsupported: '部分消息工具无法接入当前界面，请检查支持的 DSH 版本；诊断详情已记录到控制台',
 }
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap { conversationTools: ToolsKey }

@@ -16,6 +16,8 @@ export function ConversationToolsSurface(props: Props) {
   const nodes = props.useChat(snapshot => snapshot.nodes)
   const loaded = props.useChat(snapshot => snapshot.navigation.items())
   const outline = props.useProjection('turnOutline')
+  const ready = props.useSession(state => state.openState === 'open')
+  const copy = props.t('copy'), copied = props.t('copied')
   const starred = props.useTools(state => state.starredTurns)
   const messages = useMemo<readonly MessageTarget[]>(() => order.flatMap(key => {
     const node = nodes.get(key) as ChatNode | undefined
@@ -34,11 +36,11 @@ export function ConversationToolsSurface(props: Props) {
   const [mounts, setMounts] = useState<readonly Mount[]>([])
   const adapterRef = useRef<ConversationMounts | null>(null)
   useEffect(() => {
-    const adapter = new ConversationMounts(props.sessionId, setMounts)
+    const adapter = new ConversationMounts(props.sessionId, setMounts, document, props.diagnose)
     adapterRef.current = adapter
     return () => { adapterRef.current = null; adapter.dispose() }
   }, [props.sessionId])
-  useEffect(() => { adapterRef.current?.update(messages, turns) }, [props.sessionId, messages, turns])
+  useEffect(() => { adapterRef.current?.update(messages, turns, ready, [copy, copied]) }, [props.sessionId, messages, turns, ready, copy, copied])
   return <>
     <VersionPicker {...props} />
     {mounts.map(mount => {

@@ -24,6 +24,8 @@ export interface EditMessageRequest {
     readonly messageId: MessageId;
     readonly requestId: SessionRequestId;
     readonly text: string;
+    /** Known child from a partial edit; never create a replacement if its relationship is unavailable. */
+    readonly recoverySessionId?: SessionId;
 }
 /** Durable link to the edited version, independent of generation completion. */
 export interface EditMessageResult {
@@ -33,7 +35,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     interface RemoteErrorDetailsMap {
         /** Invalid target, concurrent work, or an incompatible retry. */
         'conversationTools/rejected': {
-            reason: 'empty' | 'missing-message' | 'busy' | 'request-conflict';
+            reason: 'empty' | 'missing-message' | 'busy' | 'request-conflict' | 'persistence-unavailable' | 'recovery-unavailable';
         };
         /** A child exists; the original and the new version both remain recoverable. */
         'conversationTools/incomplete': {
