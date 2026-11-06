@@ -37,3 +37,17 @@ it('releases removed rows and observes newly loaded rows without reading their t
   await vi.waitFor(()=>expect(f.mounts().filter(m=>m.kind==='actions'||m.kind==='editor')).toHaveLength(0))
   expect(f.mounts().filter(m=>m.kind==='mark')).toHaveLength(2)
 })
+
+it('keeps editor mounts when streaming adds rows or refreshes the turn outline', async () => {
+  const f=fixture()
+  await vi.waitFor(()=>expect(f.mounts().some(m=>m.kind==='editor')).toBe(true))
+  const editor=f.mounts().find(m=>m.kind==='editor')!.element
+  const input=document.createElement('textarea')
+  editor.append(input)
+  input.value='unsent draft'
+  input.focus()
+  adapter?.update([{key:'user:1',messageId:'message-1',turn:1,text:'Original text'}],[1,2,3])
+  await vi.waitFor(()=>expect(f.mounts().find(m=>m.kind==='editor')?.element).toBe(editor))
+  expect(input.value).toBe('unsent draft')
+  expect(document.activeElement).toBe(input)
+})

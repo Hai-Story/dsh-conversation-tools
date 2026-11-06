@@ -15,13 +15,13 @@
 在插件界面的「添加插件」中粘贴：
 
 ```text
-github:Hai-Story/dsh-conversation-tools#v0.1.0
+github:Hai-Story/dsh-conversation-tools#v0.1.1
 ```
 
 命令行安装到 Web 配置：
 
 ```sh
-dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.0"
+dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.1"
 ```
 
 安装后重启 DSH。仓库随版本提交 `dist/`，安装时不需要运行构建脚本。
@@ -36,7 +36,7 @@ dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.0"
 
 ![原地编辑](docs/images/edit.png)
 
-生成进行中需要先停止再编辑。编辑仅改变聊天上下文，**不会撤销已经执行的文件修改、命令或其他工具操作**。
+生成过程中可以直接打开编辑框、修改草稿；此时原任务继续运行。按 Enter 或点击「保存并重新生成」才会请求中断，等待原任务结束后发送修改后的消息。Shift+Enter 换行，输入法确认及取消编辑不会中断任务。编辑仅改变聊天上下文，**不会撤销已经执行的文件修改、命令或其他工具操作**。
 
 ## 实现与兼容性
 

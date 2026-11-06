@@ -235,11 +235,10 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
     const resolved = await this.ctx.sessionController.resolveAgent(request.sessionId);
     if ("error" in resolved) throw resolved.error;
     const source = resolved.agent;
-    if (source.status !== "idle") throw new RemoteError("conversationTools/rejected", "Stop generation before editing", { reason: "busy" });
-    return source.runMaintenance(async () => {
-      var _stack2 = [];
+    const applyEdit = async () => {
+      var _stack3 = [];
       try {
-        const observation = __using(_stack2, await this.ctx.sessionQuery.observeSession(request.sessionId));
+        const observation = __using(_stack3, await this.ctx.sessionQuery.observeSession(request.sessionId));
         const plan = planMessageEdit(observation.events, request.messageId, request.text);
         if (plan === void 0) throw new RemoteError("conversationTools/rejected", "Human message does not exist", { reason: "missing-message" });
         let record = this.domain.table("edits").get(request.requestId);
@@ -248,7 +247,7 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
           record = { sourceSessionId: request.sessionId, childSessionId: child.sessionId, fingerprint, createdAt: Date.now() };
           try {
             await this.domain.table("edits").put(request.requestId, record);
-          } catch (_error3) {
+          } catch (_error4) {
             throw new RemoteError("conversationTools/incomplete", "Version created but its link could not be saved", { sessionId: child.sessionId, phase: "link" });
           }
           const turns = this.domain.table("stars").get(request.sessionId)?.turns.filter((turn) => turn < plan.turn) ?? [];
@@ -256,12 +255,12 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
         }
         const childId = record.childSessionId;
         try {
-          var _stack = [];
+          var _stack2 = [];
           try {
             const target = await this.ctx.sessionController.resolveAgent(childId);
             if ("error" in target) throw target.error;
             const child = target.agent;
-            const previous = __using(_stack, await this.ctx.sessionQuery.observeSession(childId));
+            const previous = __using(_stack2, await this.ctx.sessionQuery.observeSession(childId));
             const submitted = previous.events.some((event) => event.type === "user/message" ? event.data.source.kind === "user" && "rpcId" in event.data.source && event.data.source.rpcId === request.requestId : event.type === "agent/inbox/spliced" && event.data.inserted.some((message) => message.source.kind === "user" && "rpcId" in message.source && message.source.rpcId === request.requestId));
             if (!submitted) {
               await child.runMaintenance(async () => {
@@ -280,20 +279,38 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
             }
             if (!await this.ctx.sessions.flush(child.session)) throw new Error("Edited message was not persisted");
             return { sessionId: childId };
-          } catch (_) {
-            var _error = _, _hasError = true;
+          } catch (_2) {
+            var _error2 = _2, _hasError2 = true;
           } finally {
-            __callDispose(_stack, _error, _hasError);
+            __callDispose(_stack2, _error2, _hasError2);
           }
-        } catch (_error3) {
+        } catch (_error4) {
           throw new RemoteError("conversationTools/incomplete", "Version preserved; retry to continue", { sessionId: childId, phase: "submission" });
         }
-      } catch (_2) {
-        var _error2 = _2, _hasError2 = true;
+      } catch (_3) {
+        var _error3 = _3, _hasError3 = true;
       } finally {
-        __callDispose(_stack2, _error2, _hasError2);
+        __callDispose(_stack3, _error3, _hasError3);
       }
-    });
+    };
+    if (this.domain.table("edits").get(request.requestId) !== void 0) return applyEdit();
+    if (source.status !== "idle") {
+      var _stack = [];
+      try {
+        const observation = __using(_stack, await this.ctx.sessionQuery.observeSession(request.sessionId));
+        if (planMessageEdit(observation.events, request.messageId, request.text) === void 0) {
+          throw new RemoteError("conversationTools/rejected", "Human message does not exist", { reason: "missing-message" });
+        }
+        this.ctx.sessionController.cancel({ sessionId: request.sessionId });
+        await source.whenIdle();
+        if (!await this.ctx.sessions.flush(source.session)) throw new Error("Stopped conversation was not persisted");
+      } catch (_) {
+        var _error = _, _hasError = true;
+      } finally {
+        __callDispose(_stack, _error, _hasError);
+      }
+    }
+    return source.runMaintenance(applyEdit);
   }
 };
 _init = __decoratorStart(_b);

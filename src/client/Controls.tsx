@@ -42,15 +42,14 @@ function StarButton({ turn, useTools, ensure, star, t }: Pick<UserProps, 'turn' 
 
 /** @param props - durable human-message target. @returns star and edit actions next to Copy. */
 export function UserActions(props: UserProps) {
-  const running = props.useSession(state => state.running)
   const editing = props.useTools(state => state.editing?.pending === true)
   const canStar = props.useAccess('conversationTools/star')
   const canEdit = props.useAccess('conversationTools/edit')
   return <>
     {canStar && <StarButton {...props} />}
-    {canEdit && <Tooltip portal label={props.t(running ? 'stopFirst' : 'edit')} side="bottom">
-      <button type="button" className={css.action} aria-label={props.t('edit')} aria-disabled={running || editing}
-        onClick={() => { if (!running && !editing) props.begin(props.messageId, props.text) }}>
+    {canEdit && <Tooltip portal label={props.t('edit')} side="bottom">
+      <button type="button" className={css.action} aria-label={props.t('edit')} aria-disabled={editing}
+        onClick={() => { if (!editing) props.begin(props.messageId, props.text) }}>
         <IconEditOutlineRegular />
       </button>
     </Tooltip>}
@@ -71,12 +70,11 @@ export function AssistantActions(props: AssistantProps) {
 }
 
 /** @param props - message-local editor seat. @returns the active draft, or nothing. */
-export function MessageEditor({ messageId, useTools, useSession, change, cancel, save, open, t }: UserProps) {
+export function MessageEditor({ messageId, useTools, change, cancel, save, open, t }: UserProps) {
   const [recoveryFailed, setRecoveryFailed] = useState(false)
   const draft = useTools(state => state.editing?.messageId === messageId ? state.editing : null)
-  const running = useSession(state => state.running)
   if (draft === null) return null
-  const disabled = draft.pending || running || draft.recoverableSessionId !== undefined || draft.text.trim() === ''
+  const disabled = draft.pending || draft.recoverableSessionId !== undefined || draft.text.trim() === ''
   return <div className={css.editor} aria-busy={draft.pending}>
     <fieldset disabled={draft.pending} className={css.fieldset}>
       <InlineEditor value={draft.text} label={t('edit')} onChange={change} onCancel={cancel}
@@ -88,7 +86,6 @@ export function MessageEditor({ messageId, useTools, useSession, change, cancel,
         if (id !== undefined) { setRecoveryFailed(false); void open(id).catch(() => { setRecoveryFailed(true) }) }
       }}>{t('recovery')}</Button>}
       {recoveryFailed && <p role="alert" className={css.error}>{t('loadFailed')}</p>}
-      {running && <p className={css.hint}>{t('stopFirst')}</p>}
       <div className={css.buttons}>
         <Button onClick={cancel}>{t('cancel')}</Button>
         <Button variant="primary" disabled={disabled} onClick={() => { void save() }}>{t(draft.pending ? 'saving' : 'save')}</Button>

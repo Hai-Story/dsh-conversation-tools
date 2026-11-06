@@ -15,13 +15,13 @@ Tested with **DSH `0.2.2-rc.1`**. This early release does not claim compatibilit
 Paste this source into the app's Add plugin dialog:
 
 ```text
-github:Hai-Story/dsh-conversation-tools#v0.1.0
+github:Hai-Story/dsh-conversation-tools#v0.1.1
 ```
 
 Or install into the Web profile:
 
 ```sh
-dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.0"
+dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.1"
 ```
 
 Restart DSH after installation. Each release commits `dist/`, so installing from GitHub requires no build scripts.
@@ -36,7 +36,7 @@ Click Edit beside a sent human message, change its text, then choose **Save and 
 
 ![Inline message editor](docs/images/edit.png)
 
-Stop generation before editing. Editing changes conversation history only: it **does not undo file changes, commands, or other tool effects**.
+You can open the editor and change a draft while generation continues. Press Enter or click **Save and regenerate** to request cancellation, wait for the current task to stop, and submit the edited message. Shift+Enter adds a newline; IME confirmation and cancelling the edit do not interrupt the task. Editing changes conversation history only: it **does not undo file changes, commands, or other tool effects**.
 
 ## Compatibility and implementation
 

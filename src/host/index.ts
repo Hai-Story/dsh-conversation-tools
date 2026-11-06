@@ -128,8 +128,7 @@ export default class ConversationTools extends TypertRemoteService {
     const resolved = await this.ctx.sessionController.resolveAgent(request.sessionId)
     if ('error' in resolved) throw resolved.error
     const source = resolved.agent
-    if (source.status !== 'idle') throw new RemoteError('conversationTools/rejected', 'Stop generation before editing', { reason: 'busy' })
-    return source.runMaintenance(async () => {
+    const applyEdit = async (): Promise<EditMessageResult> => {
       using observation = await this.ctx.sessionQuery.observeSession(request.sessionId)
       const plan = planMessageEdit(observation.events, request.messageId, request.text)
       if (plan === undefined) throw new RemoteError('conversationTools/rejected', 'Human message does not exist', { reason: 'missing-message' })
@@ -170,6 +169,19 @@ export default class ConversationTools extends TypertRemoteService {
       } catch (_error) {
         throw new RemoteError('conversationTools/incomplete', 'Version preserved; retry to continue', { sessionId: childId, phase: 'submission' })
       }
-    })
+    }
+    // A retry resumes the already-created version without interrupting newer source work.
+    if (this.domain.table('edits').get(request.requestId) !== undefined) return applyEdit()
+    if (source.status !== 'idle') {
+      // Invalid targets must not cancel an unrelated active task.
+      using observation = await this.ctx.sessionQuery.observeSession(request.sessionId)
+      if (planMessageEdit(observation.events, request.messageId, request.text) === undefined) {
+        throw new RemoteError('conversationTools/rejected', 'Human message does not exist', { reason: 'missing-message' })
+      }
+      this.ctx.sessionController.cancel({ sessionId: request.sessionId })
+      await source.whenIdle()
+      if (!await this.ctx.sessions.flush(source.session)) throw new Error('Stopped conversation was not persisted')
+    }
+    return source.runMaintenance(applyEdit)
   }
 }
