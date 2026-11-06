@@ -19,13 +19,13 @@ Tested host: **DSH `0.2.2-rc.1` Web**. This is an independent plugin; no Harness
 Paste this source into DSH's **Add plugin** dialog:
 
 ```text
-github:Hai-Story/dsh-conversation-tools#v0.1.1
+github:Hai-Story/dsh-conversation-tools#v0.1.2
 ```
 
 Or install into the Web profile from the command line:
 
 ```sh
-dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.1"
+dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.2"
 ```
 
 Use the same source or command to update an older installation, then restart DSH. Release versions include `dist/`, so installation requires no build scripts.
@@ -47,9 +47,9 @@ The action is called **Star** throughout the plugin: it marks an important excha
 
 ## Edit a message
 
-Edit any sent human message, **including the first**. Click Edit, change the text inline, then press Enter or choose **Save and regenerate**.
+Edit any sent human message, **including the first**. Click Edit to load the message into the original bottom composer. Choose permissions and a model with its native menus, then press Enter or click the native Send arrow. Cancelling restores the draft that was there before editing.
 
-![Annotated editor: 1 Change the draft, 2 Submit and regenerate, 3 Cancel the edit](docs/images/readme/editor.en.png)
+![Annotated editor: 1 Native composer, 2 Permissions, 3 Model selection, 4 Send](docs/images/readme/editor.en.png)
 
 **You can edit during generation. The current task is interrupted only when you submit.**
 
@@ -57,10 +57,10 @@ Edit any sent human message, **including the first**. Click Edit, change the tex
 | --- | --- |
 | Open the editor or change the draft | Keeps running |
 | Shift+Enter or IME confirmation | Keeps running; nothing is submitted |
-| Cancel the edit | Keeps running; the draft is discarded |
-| Enter or Save and regenerate | Cancellation is requested; the edited message is submitted after the old task settles |
+| Cancel the edit | Keeps running; the previous composer draft is restored |
+| Enter or the native Send button | Cancellation is requested; the edited message is submitted after the old task settles |
 
-Regeneration uses the earlier context and the edited message. Existing attachments remain; the replaced answer and later messages are excluded from the new context. The current working directory and model selection are preserved.
+Regeneration uses the earlier context and the edited message. Existing attachments remain; the replaced answer and later messages are excluded from the new context. The working directory is preserved; the new version uses the current selections from the native permission and model menus.
 
 ## Previous versions
 
@@ -102,7 +102,7 @@ pnpm exec playwright install chromium
 pnpm run test:browser
 ```
 
-The browser test installs the packed plugin into an isolated profile and starts stock npm DSH, substituting only the external model with a keyless fixture. It covers stars, first-message editing, future-context exclusion, version switching, reload, drafting during generation, button/Enter submission, IME confirmation, cancellation, and duplicate submissions. Temporary profiles and logs stay in Git-ignored `.artifacts/`.
+The browser test installs the packed plugin into an isolated profile and starts stock npm DSH, substituting only the external model with a keyless fixture. It covers stars, first-message editing, future-context exclusion, version switching, reload, drafting during generation, button/Enter submission, IME confirmation, cancellation, duplicate submissions, native permission/model selection, and restoration of the prior draft. Temporary profiles and logs stay in Git-ignored `.artifacts/`.
 
 Remote interface changes require updating types and descriptors in `src/protocol/` together and exercising end-to-end calls. Rebuild and commit `dist/` before release; CI checks that artifacts match the source.
 
@@ -113,7 +113,7 @@ Original screenshots and element coordinates are retained in `docs/images/readme
 <details>
 <summary>How does the plugin integrate with Harness?</summary>
 
-The package exposes a Cordis bundle and generated Remote descriptors. Assistant actions and the version selector use existing slots. A session-scoped DOM adapter mounts user-message controls and rail markers while keeping the original message renderers.
+The package exposes a Cordis bundle and generated Remote descriptors. Assistant actions and the version selector use existing slots. A session-scoped DOM adapter mounts user-message controls and rail markers while keeping the original message renderers. Editing enters a temporary `/edit` mode in the original composer, reusing its permission/model controls, Send button, and IME handling. Cancelling or completing the edit restores the prior composer draft.
 
 The adapter addresses `data-conversation-session`, `data-chat-node-key`, `data-clock`, and rail `data-index`. Message identities come from Chat data, never DOM text. Disposal removes only plugin-owned mounts and styles, without changing host files. This depends on the tested host's UI structure and must be revalidated for host upgrades.
 

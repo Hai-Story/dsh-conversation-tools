@@ -1,7 +1,7 @@
 /** DOM adapters for DSH 0.2.2-rc.1's unmodified message action rows and virtual turn rail. */
 export interface MessageTarget { key: string; messageId: string; turn: number; text: string }
 export type Mount = { id: string; element: HTMLElement } & (
-  | { kind: 'actions' | 'editor'; message: MessageTarget }
+  | { kind: 'actions'; message: MessageTarget }
   | { kind: 'mark' | 'preview'; turn: number }
 )
 
@@ -51,7 +51,7 @@ export class ConversationMounts {
       if (element?.parentElement !== parent) {
         // Another mounted header for this same pane may already own these controls.
         if ([...parent.children].some(child => child.getAttribute('data-dsh-tools-mount') === id)) return
-        element = this.document.createElement(details.kind === 'editor' ? 'div' : 'span')
+        element = this.document.createElement('span')
         element.dataset.dshToolsMount = id
         if (details.kind === 'actions') { element.style.display = 'inline-flex'; element.style.gap = '8px' }
         if (after !== undefined) after.after(element)
@@ -67,7 +67,6 @@ export class ConversationMounts {
         const copy = actions?.querySelector('button')
         if (actions !== null && copy !== null && copy !== undefined) {
           seat(`${pane}:actions:${message.key}`, actions, { kind: 'actions', message } as Omit<Mount, 'id' | 'element'>, copy)
-          seat(`${pane}:editor:${message.key}`, row, { kind: 'editor', message } as Omit<Mount, 'id' | 'element'>)
         }
       }
       for (const mark of root.querySelectorAll<HTMLButtonElement>('nav button[data-index]')) {

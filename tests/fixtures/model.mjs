@@ -5,13 +5,13 @@ import { LlmAdapter } from '@deepseek-ai/dsh-llm'
 export const name = 'conversation-tools-test-model'
 export const inject = ['llm']
 class FixtureModel extends LlmAdapter {
-  async listModels() { return [{ id: 'fixture', name: 'Fixture' }] }
-  async resolveModel(provider, id) { return { provider, id, name: 'Fixture' } }
+  async listModels(provider) { return [{ provider, id: 'fixture', name: 'Fixture' }, { provider, id: 'alternate', name: 'Alternate fixture' }] }
+  async resolveModel(provider, id) { return { provider, id, name: id === 'alternate' ? 'Alternate fixture' : 'Fixture' } }
   async * stream(request) {
     await appendFile(process.env.DSH_CONVERSATION_TEST_REQUESTS, JSON.stringify(request.messages) + '\n')
     const last = request.messages.findLast(message => message.role === 'user' && message.source?.kind === 'user')
     const prompt = last?.content.filter(block => block.type === 'text').map(block => block.text).join('') ?? 'CONTINUED'
-    const event = stage => appendFile(process.env.DSH_CONVERSATION_TEST_EVENTS, JSON.stringify({ prompt, stage }) + '\n')
+    const event = stage => appendFile(process.env.DSH_CONVERSATION_TEST_EVENTS, JSON.stringify({ prompt, stage, model: request.model }) + '\n')
     await event('started')
     if (prompt.startsWith('RUNNING_')) {
       yield { type: 'block-start', index: 0, blockType: 'text' }

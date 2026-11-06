@@ -19,13 +19,13 @@
 在 DSH 的「添加插件」中粘贴：
 
 ```text
-github:Hai-Story/dsh-conversation-tools#v0.1.1
+github:Hai-Story/dsh-conversation-tools#v0.1.2
 ```
 
 或使用命令行安装到 Web 配置：
 
 ```sh
-dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.1"
+dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.2"
 ```
 
 更新旧版本也使用上述地址或命令，完成后重启 DSH。仓库随版本提供 `dist/`，安装时不需要执行构建脚本。
@@ -47,9 +47,9 @@ dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.1"
 
 ## 编辑消息
 
-支持修改任意已发送的用户消息，**包括第一条消息**。点击编辑图标，在原地修改文本，然后按 Enter 或点击「保存并重新生成」。
+支持修改任意已发送的用户消息，**包括第一条消息**。点击编辑图标，消息会进入底部原生输入框；可照常选择权限和模型，再按 Enter 或点击原生发送箭头。取消编辑会恢复此前未发送的草稿。
 
-![标注演示：①编辑草稿，②提交并重新生成，③取消编辑](docs/images/readme/editor.zh.png)
+![标注演示：①原生输入框，②权限选择，③模型选择，④发送](docs/images/readme/editor.zh.png)
 
 **生成过程中也能编辑；只有提交时才中断原任务。**
 
@@ -57,10 +57,10 @@ dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.1"
 | --- | --- |
 | 打开编辑框、修改草稿 | 继续运行 |
 | Shift+Enter 换行、输入法确认 | 继续运行，不提交 |
-| 取消编辑 | 继续运行，放弃草稿 |
-| Enter 或「保存并重新生成」 | 请求中断，等待原任务结束后发送修改后的消息 |
+| 取消编辑 | 继续运行，恢复进入编辑前的草稿 |
+| Enter 或原生发送按钮 | 请求中断，等待原任务结束后发送修改后的消息 |
 
-重新生成使用修改点之前的上下文和新消息。原附件保留，修改点之后的旧回答及后续消息不进入新上下文；当前工作目录和模型选择沿用原会话。
+重新生成使用修改点之前的上下文和新消息。原附件保留，修改点之后的旧回答及后续消息不进入新上下文；工作目录保持不变，新的版本采用原生菜单中当前选定的权限和模型。
 
 ## 历史版本
 
@@ -102,7 +102,7 @@ pnpm exec playwright install chromium
 pnpm run test:browser
 ```
 
-浏览器测试在独立临时配置中安装打包后的插件，运行原版 npm DSH，只用测试模型替代外部模型请求，不使用 API Key。测试覆盖星标、首条编辑、旧上下文排除、版本切换、刷新恢复，以及生成中编辑、按钮/Enter 提交、输入法确认、取消和重复提交。临时配置与日志写入被 Git 忽略的 `.artifacts/`。
+浏览器测试在独立临时配置中安装打包后的插件，运行原版 npm DSH，只用测试模型替代外部模型请求，不使用 API Key。测试覆盖星标、首条编辑、旧上下文排除、版本切换、刷新恢复，以及生成中编辑、按钮/Enter 提交、输入法确认、取消和重复提交，以及原生权限/模型选择和原草稿恢复。临时配置与日志写入被 Git 忽略的 `.artifacts/`。
 
 修改 Remote 接口时，同时更新 `src/protocol/` 中的类型与描述并验证端到端调用。发布前重新构建并提交 `dist/`，CI 会检查它与源码是否一致。
 
@@ -113,7 +113,7 @@ pnpm run test:browser
 <details>
 <summary>插件如何接入 Harness？</summary>
 
-插件通过 Cordis bundle 和生成的 Remote 描述提供宿主服务。助手操作区和顶部版本入口使用已有插槽；用户消息按钮与轨道标记通过限定在当前会话的 DOM 适配器挂载。原有消息渲染器不被替换。
+插件通过 Cordis bundle 和生成的 Remote 描述提供宿主服务。助手操作区和顶部版本入口使用已有插槽；用户消息按钮与轨道标记通过限定在当前会话的 DOM 适配器挂载。编辑使用原生输入框的临时 `/edit` 模式，权限、模型、发送键及输入法处理由原组件提供；取消和提交完成后恢复先前草稿。原有消息渲染器不被替换。
 
 适配器定位 `data-conversation-session`、`data-chat-node-key`、`data-clock` 和轨道 `data-index`，消息身份来自 Chat 数据，不从 DOM 文本猜测。禁用插件时移除自己创建的挂载点和样式，不修改宿主文件。适配依赖已验证版本的界面结构，DSH 升级后需要重新验证。
 

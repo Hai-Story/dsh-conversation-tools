@@ -7,7 +7,7 @@ The PNGs in `images/readme/raw/` were captured from this plugin running in stock
 | 原图 / Original | 标注位置 / Callouts |
 | --- | --- |
 | `overview.png` | 星标、编辑、侧边标记 / Star, Edit, rail marker |
-| `editor.png` | 输入区、提交、取消 / Draft, submit, cancel |
+| `editor.png` | 原生输入区、权限、模型、发送 / Native composer, permissions, model, Send |
 | `versions.png` | 版本选择器、旧回答 / Version selector, original reply |
 
 `scripts/annotate-readme.py` 只裁剪截图、添加说明框线、编号和图注，不修改消息或控件。中文和英文标注图分别用于两份 README。原始 PNG 保持不变。

@@ -25,10 +25,10 @@ SCENES = {
         'en': ('Star and edit controls', [('Star an exchange', 'Click the star next to Copy'), ('Edit a sent message', 'Even the first one, while generating'), ('Find starred turns', 'Spot the mark on the navigation rail')]),
     },
     'editor': {
-        'crop': (280, 75, 1440, 335),
-        'targets': [('draft', (175, 128), 5), ('submit', (995, 206), 3), ('cancel', (650, 206), 3)],
-        'zh': ('先编辑，提交时才中断', [('修改消息文本', '编辑草稿时，原任务继续运行'), ('提交并重新生成', '点击此按钮或按 Enter 才会中断'), ('取消编辑', '放弃草稿，原任务继续运行')]),
-        'en': ('Draft first. Interrupt on submit.', [('Edit the draft', 'The current task keeps running'), ('Submit the edit', 'Click here or press Enter to interrupt'), ('Cancel the edit', 'Leave the current task running')]),
+        'crop': (280, 800, 1440, 1000),
+        'targets': [('draft', (155, 97), 4), ('permission', (292, 185), 3), ('model', (835, 185), 3), ('submit', (1000, 145), 3)],
+        'zh': ('复用原生输入框，发送时才中断', [('原生输入框', '先编辑，原任务继续运行'), ('权限选择', '沿用原生权限菜单'), ('模型选择', '新版本采用当前选择'), ('原生发送', '点击或按 Enter 才中断')]),
+        'en': ('Edit in the original composer', [('Native composer', 'Edit without stopping'), ('Permissions', 'Native access presets'), ('Model selection', 'Use the selected model'), ('Native Send', 'Interrupt only on submit')]),
     },
     'versions': {
         'crop': (280, 0, 1440, 515),

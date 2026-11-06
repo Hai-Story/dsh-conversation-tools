@@ -9,6 +9,8 @@ import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-api-remote-access'
 import type {} from '@deepseek-ai/dsh-working-directory'
+import type {} from '@deepseek-ai/dsh-permission-presets'
+import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import { Remote, RemoteError, TypertRemoteService, principalOf } from '@deepseek-ai/dsh-typert-protocol'
 import { conversationToolsDomain, type EditRecord } from './storage.ts'
 import { planMessageEdit } from './edit-plan.ts'
@@ -22,7 +24,7 @@ declare module '@deepseek-ai/cordis' {
 
 /** Durable annotations and idempotent editing submissions. */
 export default class ConversationTools extends TypertRemoteService {
-  static inject = ['storageDomain', 'sessionController', 'sessionQuery', 'sessions', 'agents', 'workingDirectory', 'remoteAccess', 'workspaceRegistry']
+  static inject = ['storageDomain', 'sessionController', 'sessionQuery', 'sessions', 'agents', 'workingDirectory', 'remoteAccess', 'workspaceRegistry', 'permissionPresets']
   private domain!: Domain<typeof conversationToolsDomain>
   private readonly pending = new Map<string, { fingerprint: string; operation: Promise<EditMessageResult> }>()
   private closing = false
@@ -156,6 +158,14 @@ export default class ConversationTools extends TypertRemoteService {
             child.inbox.clear()
             const selection = source.model.current()
             if (selection !== undefined) child.model.select(selection)
+            const permission = this.ctx.permissionPresets.current(source.session)
+            if (permission !== 'custom') this.ctx.permissionPresets.set(child.session, permission)
+            else {
+              const sandbox = observation.events.findLast(event => event.type === 'sandbox/mode')
+              const approval = observation.events.findLast(event => event.type === 'approval/policy')
+              if (sandbox?.type === 'sandbox/mode') child.session.append('sandbox/mode', sandbox.data)
+              if (approval?.type === 'approval/policy') child.session.append('approval/policy', approval.data)
+            }
             await this.ctx.workingDirectory.set(child, this.ctx.workingDirectory.get(source.session))
             const principal = principalOf(this.ctx.invocation)
             child.followup(createUserMessage({ content: plan.content, source: {

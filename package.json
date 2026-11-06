@@ -1,6 +1,6 @@
 {
   "name": "dsh-conversation-tools",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Star exchanges and edit any sent user message while retaining previous conversation versions in DeepSeek Harness.",
   "type": "module",
   "license": "MIT",
@@ -67,7 +67,8 @@
         "@deepseek-ai/dsh-api-remotes",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-chat",
-        "@deepseek-ai/dsh-client-ui-workspace"
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-conversation"
       ]
     }
   },
@@ -93,7 +94,8 @@
     "@deepseek-ai/dsh-storage-domain": "0.2.2-rc.1",
     "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.1",
     "@deepseek-ai/dsh-working-directory": "0.2.2-rc.1",
-    "@deepseek-ai/dsh-workspace": "0.2.2-rc.1"
+    "@deepseek-ai/dsh-workspace": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-permission-presets": "0.2.2-rc.1"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.1.0",
@@ -133,7 +135,9 @@
     "react-dom": "18.3.1",
     "typescript": "6.0.3",
     "vitest": "4.1.11",
-    "zustand": "~4.5.7"
+    "zustand": "~4.5.7",
+    "@deepseek-ai/dsh-permission-presets": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.2-rc.1"
   },
   "packageManager": "pnpm@11.28.5"
 }

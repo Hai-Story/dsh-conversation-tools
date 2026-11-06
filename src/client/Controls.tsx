@@ -1,6 +1,6 @@
 /** Optional controls in the existing message actions, inline body, and turn rail. */
 import { useEffect, useState } from 'react'
-import { Button, IconEditOutlineRegular, InlineEditor, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconEditOutlineRegular, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -17,9 +17,7 @@ export interface ToolsInjected {
   refresh: () => Promise<void>
   star: (turn: number) => Promise<void>
   begin: (messageId: MessageId, text: string) => void
-  change: (text: string) => void
   cancel: () => void
-  save: () => Promise<void>
   open: (id: SessionId) => Promise<void>
 }
 export type Face = InjectFace<ToolsInjected> & PropsLocale<'conversationTools'>
@@ -69,28 +67,23 @@ export function AssistantActions(props: AssistantProps) {
   return !allowed || turn === undefined ? null : <StarButton {...props} turn={turn} />
 }
 
-/** @param props - message-local editor seat. @returns the active draft, or nothing. */
-export function MessageEditor({ messageId, useTools, change, cancel, save, open, t }: UserProps) {
-  const [recoveryFailed, setRecoveryFailed] = useState(false)
-  const draft = useTools(state => state.editing?.messageId === messageId ? state.editing : null)
+/** Compact edit-mode notice above the unchanged resident composer. */
+export function EditComposerNotice({ useTools, cancel, open, t }: PropsRuntime<'conversation.input.dock'> & Face) {
+  const draft = useTools(state => state.editing)
+  const [openFailed, setOpenFailed] = useState(false)
   if (draft === null) return null
-  const disabled = draft.pending || draft.recoverableSessionId !== undefined || draft.text.trim() === ''
-  return <div className={css.editor} aria-busy={draft.pending}>
-    <fieldset disabled={draft.pending} className={css.fieldset}>
-      <InlineEditor value={draft.text} label={t('edit')} onChange={change} onCancel={cancel}
-        onSave={() => { if (!disabled) void save() }} />
-      <p className={css.hint}>{t('retained')}</p>
-      {draft.failed && <p className={css.error} role="alert">{t(draft.recoverableSessionId === undefined ? 'failed' : 'partial')}</p>}
-      {draft.recoverableSessionId !== undefined && <Button onClick={() => {
-        const id = draft.recoverableSessionId
-        if (id !== undefined) { setRecoveryFailed(false); void open(id).catch(() => { setRecoveryFailed(true) }) }
-      }}>{t('recovery')}</Button>}
-      {recoveryFailed && <p role="alert" className={css.error}>{t('loadFailed')}</p>}
-      <div className={css.buttons}>
-        <Button onClick={cancel}>{t('cancel')}</Button>
-        <Button variant="primary" disabled={disabled} onClick={() => { void save() }}>{t(draft.pending ? 'saving' : 'save')}</Button>
-      </div>
-    </fieldset>
+  return <div className={css.editNotice} data-conversation-tools-editing aria-busy={draft.pending}>
+    <div className={css.editLabel}><IconEditOutlineRegular size={14} />
+      <span>{t(draft.pending ? 'saving' : 'editing')}</span>
+      {!draft.pending && <span className={css.editHint}>{t('submitHint')}</span>}
+    </div>
+    <Button size="sm" disabled={draft.pending} onClick={cancel}>{t('cancelEdit')}</Button>
+    {draft.failed && <span role="alert" className={css.error}>{t('failed')}</span>}
+    {draft.recoverableSessionId !== undefined && <Button size="sm" onClick={() => {
+      const id = draft.recoverableSessionId
+      if (id !== undefined) void open(id).catch(() => { setOpenFailed(true) })
+    }}>{t('recovery')}</Button>}
+    {openFailed && <span role="alert" className={css.error}>{t('loadFailed')}</span>}
   </div>
 }
 

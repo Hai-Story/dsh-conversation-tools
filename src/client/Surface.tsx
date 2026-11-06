@@ -6,7 +6,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-session-turn-outline/client'
 import { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import { ConversationMounts, type Mount, type MessageTarget } from './dom-mounts.ts'
-import { UserActions, MessageEditor, VersionPicker, type Face } from './Controls.tsx'
+import { UserActions, VersionPicker, type Face } from './Controls.tsx'
 import css from './Controls.module.css'
 
 type Props = PropsRuntime<'conversation.session.header.utilities'> & Face
@@ -43,9 +43,7 @@ export function ConversationToolsSurface(props: Props) {
     <VersionPicker {...props} />
     {mounts.map(mount => {
       const content = 'message' in mount
-        ? mount.kind === 'actions'
-          ? <UserActions {...props} turn={mount.message.turn} text={mount.message.text} messageId={MessageId(mount.message.messageId)} />
-          : <MessageEditor {...props} turn={mount.message.turn} text={mount.message.text} messageId={MessageId(mount.message.messageId)} />
+        ? <UserActions {...props} turn={mount.message.turn} text={mount.message.text} messageId={MessageId(mount.message.messageId)} />
         : starred.includes(mount.turn)
           ? <span className={mount.kind === 'mark' ? css.mark : css.preview} role="img" aria-label={props.t('starred')}>★</span> : null
       return createPortal(content, mount.element, mount.id)

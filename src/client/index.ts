@@ -7,13 +7,14 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import remote from '../protocol/remote.js'
 import { ToolsController } from './controller.ts'
-import { AssistantActions, type ToolsInjected } from './Controls.tsx'
+import { NativeComposerEdit, type NativeEditInput } from './native-composer.ts'
+import { AssistantActions, EditComposerNotice, type ToolsInjected } from './Controls.tsx'
 import { ConversationToolsSurface } from './Surface.tsx'
 import { cssText } from './Controls.module.css'
 import { en, zh, NS } from './locales.ts'
 
 /** Browser services used by this optional plugin. */
-export const inject = ['remote', 'slots', 'locale', 'sessions', 'uiWorkspace']
+export const inject = ['remote', 'slots', 'locale', 'sessions', 'uiWorkspace', 'conversation']
 
 /** @param ctx - Client plugin context. @returns disposer for UI, data, and generated Remote contributions. */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
@@ -28,6 +29,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       return () => { style.remove() }
     })
     const controllers = new Map<SessionId, ToolsController>()
+    const composers = new Map<SessionId, NativeComposerEdit>()
+    const t = child.locale.bind(NS)
     const open = async (id: SessionId): Promise<void> => {
       await child.sessions.refresh()
       child.uiWorkspace.openSession(id)
@@ -35,14 +38,33 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     const face = (sessionId: SessionId): ToolsInjected => {
       let controller = controllers.get(sessionId)
       if (controller === undefined) {
-        controller = new ToolsController(child.remote.conversationTools, sessionId, open)
+        controller = new ToolsController(child.remote.conversationTools, sessionId)
         controllers.set(sessionId, controller)
       }
+      let composer = composers.get(sessionId)
+      if (composer === undefined) {
+        composer = new NativeComposerEdit(controller, () => {
+          const scope = child.sessions.scope(sessionId)
+          if (scope === undefined) throw new Error('Conversation is not retained')
+          const input = child.conversation.input.for(scope)
+          if (!('draftSnapshot' in input)) throw new Error('Unsupported native composer')
+          const native = input as NativeEditInput
+          return { input: native,
+            claim: claim => scope.bail('slash/input-begin-command', { claim,
+              span: { start: 0, end: 0, draftRev: native.state.getSnapshot().draftRev } }) === true,
+            onDispose: cleanup => scope.effect(() => cleanup),
+          }
+        }, open, () => t('failed'))
+        composers.set(sessionId, composer)
+      }
       return { hooks: { tools: controller.state }, ensure: controller.ensure, refresh: controller.refresh,
-        star: controller.star, begin: controller.begin, change: controller.change, cancel: controller.cancel, save: controller.save, open }
+        star: controller.star, begin: composer.begin, cancel: composer.cancel, open }
     }
-    child.effect(() => () => { for (const controller of controllers.values()) controller.dispose(); controllers.clear() })
+    child.effect(() => () => { for (const composer of composers.values()) composer.dispose(); composers.clear(); for (const controller of controllers.values()) controller.dispose(); controllers.clear() })
     child.on('connection/reset', () => { for (const controller of controllers.values()) void controller.refresh() })
+    child.slots.inject('conversation.input.dock', () => child.slots.register({
+      name: 'conversation.input.dock', id: 'conversation-tools-edit', order: -20, locale: NS, inject: face,
+    }, EditComposerNotice))
     child.slots.inject('conversation.chat.assistant-actions', () => child.slots.register({
       name: 'conversation.chat.assistant-actions', id: 'conversation-tools', order: -10, locale: NS, inject: face,
     }, AssistantActions))
