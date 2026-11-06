@@ -21,24 +21,30 @@ export interface EditingDraft {
   readonly recoverableSessionId?: SessionId
 }
 /** Failed operations retain their exact retry intent. */
-export type ToolsError = { kind: 'load' } | { kind: 'star'; turn: number; starred: boolean }
-  | { kind: 'edit-start' } | { kind: 'open'; sessionId: SessionId }
+export type ToolsError = { kind: 'edit-start' } | { kind: 'open'; sessionId: SessionId }
+export interface FailedStar { readonly turn: number; readonly starred: boolean }
 
 /** Session-local UI state; committed annotations always come from the Host. */
 export interface ToolsView extends ConversationToolsSnapshot {
+  readonly available: boolean
   readonly loaded: boolean
+  readonly loadFailed: boolean
+  readonly failedStars: readonly FailedStar[]
   readonly error: ToolsError | null
   readonly uiIssues: readonly string[]
   readonly busyTurns: readonly number[]
   readonly editing: EditingDraft | null
 }
 
+export const initialToolsView: ToolsView = {
+  starredTurns: [], versions: [], available: true, loaded: false, loadFailed: false, failedStars: [],
+  error: null, uiIssues: [], busyTurns: [], editing: null,
+}
+
 /** Shared Session state published through the framework's injected hooks. */
 export class ToolsController {
   /** Shared committed annotations and unsubmitted editing draft. */
-  readonly state = createSnapshotStore<ToolsView>({
-    starredTurns: [], versions: [], loaded: false, error: null, uiIssues: [], busyTurns: [], editing: null,
-  })
+  readonly state = createSnapshotStore<ToolsView>({ ...initialToolsView })
   private loading: Promise<void> | undefined
   private disposed = false
   private generation = 0
@@ -64,9 +70,9 @@ export class ToolsController {
     const generation = this.generation
     this.loading = this.remote.snapshot(this.sessionId).then((result) => {
       if (!this.isAlive() || generation !== this.generation) return
-      if (result.ok) this.update({ ...result.value, loaded: true, error: this.state.getSnapshot().error?.kind === 'load' ? null : this.state.getSnapshot().error })
-      else { this.report('load', result.error); this.update({ error: { kind: 'load' } }) }
-    }).catch(error => { if (this.isAlive() && generation === this.generation) { this.report('load', error); this.update({ error: { kind: 'load' } }) } })
+      if (result.ok) this.update({ ...result.value, loaded: true, loadFailed: false })
+      else { this.report('load', result.error); this.update({ loadFailed: true }) }
+    }).catch(error => { if (this.isAlive() && generation === this.generation) { this.report('load', error); this.update({ loadFailed: true }) } })
       .finally(() => { this.loading = undefined })
     return this.loading
   }
@@ -80,16 +86,14 @@ export class ToolsController {
   }
 
   retry = async (): Promise<void> => {
-    const error = this.state.getSnapshot().error
-    if (error?.kind === 'star') await this.writeStar(error.turn, error.starred)
-    else if (error?.kind === 'load') await this.refresh()
+    await Promise.all(this.state.getSnapshot().failedStars.map(({ turn, starred }) => this.writeStar(turn, starred)))
   }
 
   private async writeStar(turn: number, starred: boolean): Promise<void> {
     const current = this.state.getSnapshot()
     if (!this.isAlive() || current.busyTurns.includes(turn)) return
     this.generation++
-    this.update({ busyTurns: [...current.busyTurns, turn], error: null })
+    this.update({ busyTurns: [...current.busyTurns, turn] })
     try {
       const result = await this.remote.star({ sessionId: this.sessionId, turn, starred })
       if (!result.ok) throw result.error
@@ -97,12 +101,14 @@ export class ToolsController {
         this.generation++
         const otherTurns = this.state.getSnapshot().starredTurns.filter(value => value !== turn)
         const starredTurns = result.value.starredTurns.includes(turn) ? [...otherTurns, turn].sort((a, b) => a - b) : otherTurns
-        const failure = this.state.getSnapshot().error
         this.update({ starredTurns, versions: result.value.versions,
-          error: failure?.kind === 'star' && failure.turn === turn ? null : failure })
+          failedStars: this.state.getSnapshot().failedStars.filter(failure => failure.turn !== turn) })
       }
     } catch (error) {
-      if (this.isAlive()) { this.report('star', error); this.update({ error: { kind: 'star', turn, starred } }) }
+      if (this.isAlive()) {
+        this.report('star', error)
+        this.update({ failedStars: [...this.state.getSnapshot().failedStars.filter(failure => failure.turn !== turn), { turn, starred }] })
+      }
     } finally { if (this.isAlive()) this.update({ busyTurns: this.state.getSnapshot().busyTurns.filter(value => value !== turn) }) }
   }
 
@@ -173,5 +179,7 @@ export class ToolsController {
   /** Prevent late responses from publishing after plugin disposal. */
   dispose(): void { this.disposed = true }
   private isAlive(): boolean { return !this.disposed }
-  private update(patch: Partial<ToolsView>): void { this.state.set({ ...this.state.getSnapshot(), ...patch }) }
+  private update(patch: Partial<ToolsView>): void {
+    if (!this.disposed) this.state.set({ ...this.state.getSnapshot(), ...patch })
+  }
 }

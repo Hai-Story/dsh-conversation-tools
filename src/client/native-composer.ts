@@ -59,9 +59,12 @@ export class NativeComposerEdit {
       }
       if (this.saved !== undefined) this.restore(recovery === undefined)
       const current = port.input.draftSnapshot
+      const attachments = [...port.input.state.getSnapshot().attachmentIds]
       const staleEdit = recovery !== undefined && (current.command?.token === EDIT_TOKEN || current.text === EDIT_TOKEN + recovery.text)
-      const saved: SavedComposer = { port, draft: staleEdit && previous !== undefined ? previous : current,
-        attachments: [...port.input.state.getSnapshot().attachmentIds], unsubscribe: () => {}, unbind: () => {}, changing: true, scheduled: false }
+      const empty = current.text === '' && current.command === undefined && current.references.length === 0
+        && (current.quotes?.length ?? 0) === 0 && attachments.length === 0
+      const saved: SavedComposer = { port, draft: recovery !== undefined && (staleEdit || empty) && previous !== undefined ? previous : current,
+        attachments, unsubscribe: () => {}, unbind: () => {}, changing: true, scheduled: false }
       this.saved = saved
       this.controller.begin(messageId, text, saved.draft, recovery)
       for (const id of saved.attachments) port.input.removeAttachment(id)

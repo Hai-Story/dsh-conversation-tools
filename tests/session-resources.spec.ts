@@ -2,7 +2,9 @@ import { expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
-import { SessionToolsRegistry, type SessionTools } from '../src/client/session-resources.ts'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { ToolsController } from '../src/client/controller.ts'
+import { observeSessionTools, SessionToolsRegistry, type SessionTools } from '../src/client/session-resources.ts'
 
 it('releases controllers with their session scope and refreshes only retained sessions', async () => {
   const ctx = new Context()
@@ -32,4 +34,40 @@ it('releases controllers with their session scope and refreshes only retained se
   expect(next.controller.refresh).toHaveBeenCalledOnce()
   expect(next.controller.dispose).toHaveBeenCalledOnce()
   expect(next.composer.dispose).toHaveBeenCalledOnce()
+  const create = vi.fn(() => next as unknown as SessionTools)
+  expect(registry.get({ ctx, sessionId: SessionId('session') } as SessionBinding, create)).toBeUndefined()
+  expect(create).not.toHaveBeenCalled()
+})
+
+it('keeps a cached face disabled without a binding and reconnects it to each live generation', async () => {
+  const changes = createSnapshotStore(0)
+  let current: SessionTools | undefined
+  const source = observeSessionTools(() => current, changes)
+  expect(source.getSnapshot().available).toBe(false)
+  expect(source.getSnapshot()).toBe(source.getSnapshot())
+  const listener = vi.fn()
+  const unsubscribe = source.subscribe(listener)
+  const make = () => ({ controller: new ToolsController({
+    snapshot: async () => ({ ok: true, value: { starredTurns: [1], versions: [] } }), star: vi.fn(), edit: vi.fn(),
+  }, SessionId('source'), vi.fn()), composer: { dispose: vi.fn() } as unknown as SessionTools['composer'] })
+  const first = make()
+  current = first
+  changes.set(1)
+  expect(source.getSnapshot().available).toBe(true)
+  await first.controller.ensure()
+  expect(source.getSnapshot()).toMatchObject({ loaded: true, starredTurns: [1] })
+  current = undefined
+  changes.set(2)
+  expect(source.getSnapshot().available).toBe(false)
+  listener.mockClear()
+  first.controller.failStart(new Error('obsolete generation'))
+  expect(listener).not.toHaveBeenCalled()
+  current = make()
+  changes.set(3)
+  expect(source.getSnapshot()).toMatchObject({ available: true, loaded: false, error: null })
+  unsubscribe()
+  listener.mockClear()
+  await current.controller.ensure()
+  changes.set(4)
+  expect(listener).not.toHaveBeenCalled()
 })

@@ -341,9 +341,9 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
         __callDispose(_stack3, _error3, _hasError3);
       }
     };
-    await this.checkpoint(source.session);
     if (this.domain.table("edits").get(request.requestId) !== void 0) return applyEdit();
     if (this.unlinked.has(request.requestId)) return this.maintain(source, applyEdit);
+    await this.checkpoint(source.session);
     if (source.status !== "idle") {
       var _stack = [];
       try {

@@ -17,7 +17,10 @@ await mkdir(workspace)
 const cli=join(root,'node_modules/@deepseek-ai/dsh/lib/bin.js')
 const env={...process.env,DSH_HOME:join(run,'home'),DSH_TELEMETRY_DISABLED:'1',DSH_CONVERSATION_TEST_REQUESTS:join(run,'requests.jsonl'),DSH_CONVERSATION_TEST_EVENTS:join(run,'model-events.jsonl')}
 const packed=JSON.parse(execFileSync('npm',['pack','--pack-destination',run,'--ignore-scripts','--json'],{cwd:root,env,encoding:'utf8'}))[0]
-execFileSync(process.execPath,[cli,'plugin','--profile','web','add',join(run,packed.filename)],{cwd:root,env,stdio:['ignore','pipe','pipe']})
+const installSpec=process.env.DSH_TEST_INSTALL_SPEC??join(run,packed.filename)
+execFileSync(process.execPath,[cli,'plugin','--profile','web','add',installSpec],{cwd:root,env,stdio:['ignore','pipe','pipe']})
+const installed=JSON.parse(await readFile(join(env.DSH_HOME,'profiles/web/node_modules/dsh-conversation-tools/package.json'),'utf8'))
+assert.equal(installed.version,JSON.parse(await readFile(join(root,'package.json'),'utf8')).version)
 const patch=join(run,'test.patch.json')
 await writeFile(patch,JSON.stringify([
   {id:'agent-default-model',config:{provider:'conversation-tools-test',model:'fixture'}},
@@ -47,6 +50,7 @@ try {
   const uiWarnings=[]
   page.on('pageerror',error=>errors.push(error.message))
   page.on('console',message=>{if(message.text().includes('Unsupported DSH UI anchors'))uiWarnings.push(message.text())})
+  page.on('console',message=>{if(message.text().includes('slot entry crashed'))errors.push(message.text())})
   await page.goto(url)
   const origin=new URL(url).origin
   const rpc=async(method,request)=>{
@@ -72,7 +76,46 @@ try {
   await until(()=>page.getByRole('button',{name:'Remove star',exact:true}).count().then(n=>n>=2),'synchronized stars')
   await page.getByRole('img',{name:'Starred exchange',exact:true}).first().waitFor()
   await page.screenshot({path:join(screenshots,'stars.png')})
+  const checkLayout=async()=>{
+    // The adapter diagnoses stable anchor failures after 400 ms.
+    await pause(550)
+    assert.deepEqual(uiWarnings,[])
+    assert.deepEqual(errors,[])
+  }
+  await page.getByRole('tab',{name:'Trajectory',exact:true}).click()
+  await until(async()=>await page.locator('[data-chat-flow]').count()===0,'trajectory view')
+  await checkLayout()
+  await page.getByRole('tab',{name:'Chat',exact:true}).click()
+  await page.getByText('Reply: SECOND_MESSAGE',{exact:true}).waitFor()
+  await page.getByRole('button',{name:'Open right sidebar',exact:true}).click()
+  await checkLayout()
+  await page.getByRole('button',{name:'Fullscreen',exact:true}).click()
+  await checkLayout()
+  await page.getByRole('button',{name:'Split',exact:true}).click()
+  await until(async()=>await page.locator('[data-dockkit-strip]').count()===2,'two sidebar panes')
+  await checkLayout()
+  await page.getByRole('button',{name:'Collapse right sidebar',exact:true}).click()
+  await checkLayout()
   const nativeInput=page.locator('[data-composer-input]').last()
+  // Reload a partial-edit ticket into the real resident composer without sending it.
+  for(const newerDraft of ['', 'NEW_DRAFT_AFTER_RELOAD']) {
+    await nativeInput.fill('')
+    await page.evaluate(({source,requestId})=>{
+      sessionStorage.setItem(`dsh.conversation-tools.recovery.${source}`,JSON.stringify({
+        draft:{messageId:'recovery-fixture',requestId,text:'RECOVER_EDIT_TEXT',pending:false,failed:true,
+          failure:'partial',recoverableSessionId:source},previous:{text:'PRIOR_DRAFT_FROM_TICKET',references:[]},
+      }))
+    },{source,requestId:randomUUID()})
+    await page.reload()
+    await page.getByRole('button',{name:'Restore edit draft',exact:true}).waitFor()
+    if(!newerDraft)assert.equal((await nativeInput.innerText()).trim(),'')
+    if(newerDraft)await nativeInput.fill(newerDraft)
+    await page.getByRole('button',{name:'Restore edit draft',exact:true}).click()
+    await until(async()=>(await nativeInput.innerText()).includes('RECOVER_EDIT_TEXT'),'recovered edit text')
+    await page.getByRole('button',{name:'Cancel edit',exact:true}).click()
+    assert.equal((await nativeInput.innerText()).trim(),newerDraft||'PRIOR_DRAFT_FROM_TICKET')
+    assert.equal(await page.evaluate(source=>sessionStorage.getItem(`dsh.conversation-tools.recovery.${source}`),source),null)
+  }
   await nativeInput.fill('UNSENT_DRAFT')
   await first.getByRole('button',{name:'Edit message',exact:true}).click()
   await page.locator('[data-composer-input]').last().fill('EDITED_FIRST_MESSAGE')
@@ -190,6 +233,7 @@ try {
   page=chinese
   chinese.on('pageerror',error=>errors.push(error.message))
   chinese.on('console',message=>{if(message.text().includes('Unsupported DSH UI anchors'))uiWarnings.push(message.text())})
+  chinese.on('console',message=>{if(message.text().includes('slot entry crashed'))errors.push(message.text())})
   await chinese.goto(url)
   await chinese.getByRole('treeitem').first().waitFor()
   const chineseWorkspace=chinese.getByRole('treeitem').first()
@@ -207,8 +251,8 @@ try {
   await chinese.close()
   assert.deepEqual(errors,[])
   assert.deepEqual(uiWarnings,[])
-  await writeFile(join(run,'result.json'),JSON.stringify({host:'0.2.2-rc.1',source,child,requests:(await events()).filter(event=>event.stage==='started').length,passed:true},null,2))
-  console.log('PASS: stock DSH installation, stars, first-message editing, excluded future context, retained versions, reload, native composer/permission/model controls, prior draft and focus restoration, narrow/dark layout, submit-only interruption by button/Enter, Chinese UI, and no anchor warnings.')
+  await writeFile(join(run,'result.json'),JSON.stringify({host:'0.2.2-rc.1',version:installed.version,installSpec,source,child,requests:(await events()).filter(event=>event.stage==='started').length,passed:true},null,2))
+  console.log('PASS: stock DSH installation, stars, editing and versions, reload recovery into empty/new drafts, native composer/permissions/model/focus, narrow/dark and Trajectory/split/fullscreen layouts, submit-only interruption, Chinese UI, and no anchor or slot errors. Artifacts: '+run)
 } catch(error) {
   if(page) {await page.screenshot({path:join(run,'failure.png')}).catch(()=>{});await writeFile(join(run,'page.txt'),await page.locator('body').innerText().catch(()=>''))}
   console.error('Browser artifacts:',run)

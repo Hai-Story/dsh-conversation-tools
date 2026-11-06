@@ -122,3 +122,18 @@ it('sorts equal-timestamp versions consistently after storage reloads', async ()
   for (const id of ['z', 'a']) await f.edits.put(id, { sourceSessionId: f.source.id, childSessionId: SessionId(id), fingerprint: id, createdAt: 1 })
   expect(f.service.snapshot(f.source.id).versions.map(version => version.sessionId)).toEqual(['source', 'a', 'z'])
 })
+
+it.each(['linked', 'unlinked'] as const)('recovers a %s child without requiring source durability again', async mode => {
+  const f = await fixture()
+  if (mode === 'unlinked') {
+    f.edits.put.mockRejectedValueOnce(new Error('link failed'))
+    await expect(f.service.edit(f.request)).rejects.toMatchObject({ details: { phase: 'link' } })
+  } else await f.service.edit(f.request)
+  f.flush.mockClear()
+  f.flush.mockImplementation(async session => session.id !== f.source.id)
+  await expect(f.service.edit({ ...f.request, recoverySessionId: SessionId('child-1') })).resolves.toEqual({ sessionId: 'child-1' })
+  expect(f.flush.mock.calls.every(([session]) => session.id === 'child-1')).toBe(true)
+  expect(f.flush).toHaveBeenCalled()
+  expect(f.create).toHaveBeenCalledOnce()
+  expect(f.agents.get(SessionId('child-1'))!.followup).toHaveBeenCalledOnce()
+})

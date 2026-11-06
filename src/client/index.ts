@@ -6,7 +6,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import remote from '../protocol/remote.js'
-import { SessionToolsRegistry } from './session-resources.ts'
+import { observeSessionTools, SessionToolsRegistry } from './session-resources.ts'
 import { ToolsController } from './controller.ts'
 import { NativeComposerEdit, type NativeEditInput } from './native-composer.ts'
 import { AssistantActions, EditComposerNotice, type ToolsInjected } from './Controls.tsx'
@@ -36,41 +36,52 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       child.uiWorkspace.openSession(id)
     }
     const face = (sessionId: SessionId): ToolsInjected => {
-      const binding = child.sessions.binding(sessionId)
-      if (binding === undefined) throw new Error('Conversation is not retained')
-      const { controller, composer } = resources.get(binding, () => {
-        const controller = new ToolsController(child.remote.conversationTools, sessionId,
-          (operation, error) => child.logger.warn(`conversation-tools: ${operation}`, error))
-        const composer = new NativeComposerEdit(controller, () => {
-          const scope = child.sessions.scope(sessionId)
-          if (scope === undefined) throw new Error('Conversation is not retained')
-          const input = child.conversation.input.for(scope)
-          if (!('draftSnapshot' in input)) throw new Error('Unsupported native composer')
-          const native = input as NativeEditInput
-          return { input: native,
-            claim: claim => scope.bail('slash/input-begin-command', { claim,
-              span: { start: 0, end: 0, draftRev: native.state.getSnapshot().draftRev } }) === true,
-            onDispose: cleanup => scope.effect(() => cleanup),
-          }
-        }, open, () => {
-          const failure = controller.state.getSnapshot().editing?.failure
-          return t(failure === 'busy' ? 'busy' : failure === 'persistence' ? 'persistenceUnavailable'
-            : failure === 'partial' ? 'partial' : failure === 'recovery-unavailable' ? 'recoveryUnavailable' : 'failed')
+      const retention = child.sessions.retainInfo(sessionId)
+      const resolve = () => {
+        const binding = child.sessions.binding(sessionId)
+        if (binding === undefined || retention.getSnapshot().referenceCount === 0) return undefined
+        return resources.get(binding, () => {
+          const controller = new ToolsController(child.remote.conversationTools, sessionId,
+            (operation, error) => child.logger.warn(`conversation-tools: ${operation}`, error))
+          const composer = new NativeComposerEdit(controller, () => {
+            const scope = child.sessions.scope(sessionId)
+            if (scope === undefined) throw new Error('Conversation is not retained')
+            const input = child.conversation.input.for(scope)
+            if (!('draftSnapshot' in input)) throw new Error('Unsupported native composer')
+            const native = input as NativeEditInput
+            return { input: native,
+              claim: claim => scope.bail('slash/input-begin-command', { claim,
+                span: { start: 0, end: 0, draftRev: native.state.getSnapshot().draftRev } }) === true,
+              onDispose: cleanup => scope.effect(() => cleanup),
+            }
+          }, open, () => {
+            const failure = controller.state.getSnapshot().editing?.failure
+            return t(failure === 'busy' ? 'busy' : failure === 'persistence' ? 'persistenceUnavailable'
+              : failure === 'partial' ? 'partial' : failure === 'recovery-unavailable' ? 'recoveryUnavailable' : 'failed')
+          })
+          return { controller, composer }
         })
-        return { controller, composer }
-      })
+      }
       const openVersion = async (id: SessionId): Promise<void> => {
+        const controller = resolve()?.controller
+        if (controller === undefined) return
         try { await open(id); controller.dismissError() } catch (error) { controller.failOpen(id, error) }
       }
-      return { hooks: { tools: controller.state }, ensure: controller.ensure, refresh: controller.refresh,
+      return { hooks: { tools: observeSessionTools(resolve, retention) },
+        ensure: async () => { await resolve()?.controller.ensure() },
+        refresh: async () => { await resolve()?.controller.refresh() },
         retry: async () => {
-          const error = controller.state.getSnapshot().error
+          const error = resolve()?.controller.state.getSnapshot().error
           if (error?.kind === 'open') await openVersion(error.sessionId)
-          else await controller.retry()
         },
-        dismissError: controller.dismissError, diagnose: controller.diagnose,
-        star: controller.star, begin: composer.begin, resume: composer.resume, cancel: composer.cancel, open: openVersion }
+        retryStars: async () => { await resolve()?.controller.retry() },
+        dismissError: () => { resolve()?.controller.dismissError() },
+        diagnose: issues => { resolve()?.controller.diagnose(issues) },
+        star: async turn => { await resolve()?.controller.star(turn) },
+        begin: (messageId, text) => { resolve()?.composer.begin(messageId, text) },
+        resume: () => { resolve()?.composer.resume() }, cancel: () => { resolve()?.composer.cancel() }, open: openVersion }
     }
+
     child.effect(() => () => resources.dispose())
     child.on('connection/reset', () => resources.refresh())
     child.slots.inject('conversation.input.dock', () => child.slots.register({
