@@ -1,0 +1,139 @@
+{
+  "name": "dsh-conversation-tools",
+  "version": "0.1.0",
+  "description": "Star exchanges and edit any sent user message while retaining previous conversation versions in DeepSeek Harness.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Hai-Story",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hai-Story/dsh-conversation-tools.git"
+  },
+  "homepage": "https://github.com/Hai-Story/dsh-conversation-tools#readme",
+  "bugs": {
+    "url": "https://github.com/Hai-Story/dsh-conversation-tools/issues"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "bookmarks",
+    "message-editing"
+  ],
+  "engines": {
+    "node": ">=24.9",
+    "dsh": "0.2.2-rc.1"
+  },
+  "main": "dist/index.js",
+  "types": "dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": "./dist/client.js",
+    "./types": {
+      "types": "./dist/types/types.d.ts"
+    },
+    "./remote": {
+      "types": "./dist/protocol/remote.d.ts",
+      "default": "./dist/protocol/remote.js"
+    },
+    "./typert": {
+      "types": "./dist/protocol/host.d.ts",
+      "default": "./dist/protocol/host.js"
+    },
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "dist",
+    "locale",
+    "docs/images",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-chat",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "vitest run",
+    "test:browser": "node tests/browser.mjs",
+    "check": "npm run typecheck && npm test && npm run build",
+    "verify:dist": "node scripts/verify-dist.mjs"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-agent": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-api-remote-access": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-session": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-session-query": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-storage-domain": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-working-directory": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-workspace": "0.2.2-rc.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-agent": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-api-remote-access": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-api-remotes": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-locale": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-store": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-chat": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-session": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-workspace": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-session": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-session-query": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-session-turn-outline": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-storage-domain": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-util-crypto": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-working-directory": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-workspace": "0.2.2-rc.1",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "^24",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.0",
+    "esbuild": "0.25.12",
+    "immer": "^10.2.0",
+    "jsdom": "29.1.1",
+    "lightningcss": "1.33.0",
+    "playwright": "1.61.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11",
+    "zustand": "~4.5.7"
+  },
+  "packageManager": "pnpm@11.28.5"
+}
