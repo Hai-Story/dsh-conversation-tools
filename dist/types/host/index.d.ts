@@ -13,6 +13,7 @@ export default class ConversationTools extends TypertRemoteService {
     static inject: string[];
     private domain;
     private readonly pending;
+    private readonly unlinked;
     private closing;
     private annotationTail;
     /** @param ctx - Host plugin context. */
@@ -38,5 +39,9 @@ export default class ConversationTools extends TypertRemoteService {
      */
     edit(request: EditMessageRequest): Promise<EditMessageResult>;
     private createVersion;
+    /** Missing listeners are an unsupported persistence capability, not a failed disk write. */
+    private checkpoint;
+    /** Catch only synchronous acquisition failure; errors inside the task keep their own classification. */
+    private maintain;
     private performEdit;
 }

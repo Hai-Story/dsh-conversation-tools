@@ -10,6 +10,8 @@ import { chromium } from 'playwright'
 const root=resolve(import.meta.dirname,'..')
 await mkdir(join(root,'.artifacts'),{recursive:true})
 const run=await mkdtemp(join(root,'.artifacts','browser-'))
+const screenshots=process.env.DSH_UPDATE_SCREENSHOTS==='1'?join(root,'docs/images'):run
+await mkdir(screenshots,{recursive:true})
 const workspace=join(run,'workspace')
 await mkdir(workspace)
 const cli=join(root,'node_modules/@deepseek-ai/dsh/lib/bin.js')
@@ -42,7 +44,9 @@ try {
   browser=await chromium.launch()
   page=await browser.newPage({viewport:{width:1440,height:1000},locale:'en-US'})
   const errors=[]
+  const uiWarnings=[]
   page.on('pageerror',error=>errors.push(error.message))
+  page.on('console',message=>{if(message.text().includes('Unsupported DSH UI anchors'))uiWarnings.push(message.text())})
   await page.goto(url)
   const origin=new URL(url).origin
   const rpc=async(method,request)=>{
@@ -67,8 +71,7 @@ try {
   await first.getByRole('button',{name:'Star this exchange',exact:true}).click()
   await until(()=>page.getByRole('button',{name:'Remove star',exact:true}).count().then(n=>n>=2),'synchronized stars')
   await page.getByRole('img',{name:'Starred exchange',exact:true}).first().waitFor()
-  await mkdir(join(root,'docs/images'),{recursive:true})
-  await page.screenshot({path:join(root,'docs/images/stars.png')})
+  await page.screenshot({path:join(screenshots,'stars.png')})
   const nativeInput=page.locator('[data-composer-input]').last()
   await nativeInput.fill('UNSENT_DRAFT')
   await first.getByRole('button',{name:'Edit message',exact:true}).click()
@@ -84,7 +87,7 @@ try {
   if(await modelPage.isVisible())await modelPage.click()
   await page.getByRole('menuitemradio',{name:'Alternate fixture',exact:true}).click()
   await until(async()=>(await model.getAttribute('aria-label'))?.includes('Alternate fixture'),'native model selection')
-  await page.screenshot({path:join(root,'docs/images/edit.png')})
+  await page.screenshot({path:join(screenshots,'edit.png')})
   await page.getByRole('button',{name:'Send message',exact:true}).click()
   await page.getByText('Reply: EDITED_FIRST_MESSAGE',{exact:true}).waitFor()
   const requests=(await readFile(env.DSH_CONVERSATION_TEST_REQUESTS,'utf8')).trim().split('\n').map(JSON.parse)
@@ -104,6 +107,7 @@ try {
   await page.getByText('Reply: SECOND_MESSAGE',{exact:true}).waitFor()
   assert.equal(await nativeInput.innerText(),'UNSENT_DRAFT')
   await versions.selectOption(child)
+  await page.getByText('Reply: EDITED_FIRST_MESSAGE',{exact:true}).waitFor()
   await page.reload()
   await page.getByText('Reply: EDITED_FIRST_MESSAGE',{exact:true}).waitFor()
   assert.equal(await versions.inputValue(),child)
@@ -112,9 +116,10 @@ try {
   await page.setViewportSize({width:390,height:844})
   await page.getByRole('button',{name:'Edit message',exact:true}).click()
   await page.locator('[data-composer-input]').last().fill('中文多行消息\n保留历史版本')
-  await page.screenshot({path:join(root,'docs/images/mobile.png')})
+  await page.screenshot({path:join(screenshots,'mobile.png')})
   await page.getByRole('button',{name:'Cancel edit',exact:true}).click()
   assert.equal((await nativeInput.innerText()).trim(),'')
+  await until(()=>nativeInput.evaluate(element=>element===document.activeElement||element.contains(document.activeElement)),'composer focus after cancelling')
   // Exercise both submission gestures while the source model remains active.
   await page.setViewportSize({width:1440,height:1000})
   await page.emulateMedia({colorScheme:'light'})
@@ -181,9 +186,29 @@ try {
     await versions.selectOption(editedId)
     await page.getByText(`Reply: ${replacement}`,{exact:true}).waitFor()
   }
+  const chinese=await browser.newPage({viewport:{width:1440,height:1000},locale:'zh-CN'})
+  page=chinese
+  chinese.on('pageerror',error=>errors.push(error.message))
+  chinese.on('console',message=>{if(message.text().includes('Unsupported DSH UI anchors'))uiWarnings.push(message.text())})
+  await chinese.goto(url)
+  await chinese.getByRole('treeitem').first().waitFor()
+  const chineseWorkspace=chinese.getByRole('treeitem').first()
+  if(await chineseWorkspace.getAttribute('aria-expanded')==='false')await chineseWorkspace.click()
+  const moreSessions=chinese.getByText(/^展开其余 \d+ 个会话$/)
+  if(await moreSessions.isVisible())await moreSessions.click()
+  await chinese.getByRole('treeitem').filter({has:chinese.getByText('FIRST_MESSAGE',{exact:true})}).last().getByText('FIRST_MESSAGE',{exact:true}).click()
+  await chinese.getByText('Reply: SECOND_MESSAGE',{exact:true}).waitFor()
+  const chineseMessage=chinese.locator('[data-chat-flow-kind="user"]').first()
+  await chineseMessage.hover()
+  await chineseMessage.getByRole('button',{name:'编辑消息',exact:true}).click()
+  await chinese.getByRole('button',{name:'取消编辑',exact:true}).click()
+  await chineseMessage.getByRole('button',{name:'取消星标',exact:true}).waitFor({state:'attached'})
+  await chinese.screenshot({path:join(run,'chinese.png')})
+  await chinese.close()
   assert.deepEqual(errors,[])
+  assert.deepEqual(uiWarnings,[])
   await writeFile(join(run,'result.json'),JSON.stringify({host:'0.2.2-rc.1',source,child,requests:(await events()).filter(event=>event.stage==='started').length,passed:true},null,2))
-  console.log('PASS: stock DSH installation, stars, first-message editing, excluded future context, retained versions, reload, native composer/permission/model controls, prior draft restoration, narrow/dark layout, and submit-only interruption by button/Enter.')
+  console.log('PASS: stock DSH installation, stars, first-message editing, excluded future context, retained versions, reload, native composer/permission/model controls, prior draft and focus restoration, narrow/dark layout, submit-only interruption by button/Enter, Chinese UI, and no anchor warnings.')
 } catch(error) {
   if(page) {await page.screenshot({path:join(run,'failure.png')}).catch(()=>{});await writeFile(join(run,'page.txt'),await page.locator('body').innerText().catch(()=>''))}
   console.error('Browser artifacts:',run)

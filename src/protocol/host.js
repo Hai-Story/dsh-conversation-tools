@@ -9,6 +9,7 @@ const _deepseek_ai_dsh_conversation_tools_conversationTools_edit_parameter_0$sch
   'messageId': z.string().readonly(),
   'requestId': z.string().readonly(),
   'text': z.string().readonly(),
+  'recoverySessionId': z.string().optional(),
 }))
 let _deepseek_ai_dsh_conversation_tools_conversationTools_edit_result$schema$value
 const _deepseek_ai_dsh_conversation_tools_conversationTools_edit_result$schema = () => (_deepseek_ai_dsh_conversation_tools_conversationTools_edit_result$schema$value ??= z.object({
@@ -44,6 +45,7 @@ const _deepseek_ai_dsh_conversation_tools_conversationTools_edit_parameter_0_str
   'messageId': z.string().readonly(),
   'requestId': z.string().readonly(),
   'text': z.string().readonly(),
+  'recoverySessionId': z.string().optional(),
 }))
 let _deepseek_ai_dsh_conversation_tools_conversationTools_snapshot_parameter_0_strict$schema$value
 const _deepseek_ai_dsh_conversation_tools_conversationTools_snapshot_parameter_0_strict$schema = () => (_deepseek_ai_dsh_conversation_tools_conversationTools_snapshot_parameter_0_strict$schema$value ??= z.string())
@@ -70,13 +72,13 @@ const $remote = createTypertRemoteInfo({
             mode: 'strict',
             typeSymbol: 'dsh-conversation-tools/types#EditMessageRequest',
             create: _deepseek_ai_dsh_conversation_tools_conversationTools_edit_parameter_0$schema,
-            jsonSchema: {"type":"object","properties":{"sessionId":{"type":"string"},"messageId":{"type":"string"},"requestId":{"type":"string"},"text":{"type":"string"}},"required":["sessionId","messageId","requestId","text"],"additionalProperties":true},
+            jsonSchema: {"type":"object","properties":{"sessionId":{"type":"string"},"messageId":{"type":"string"},"requestId":{"type":"string"},"text":{"type":"string"},"recoverySessionId":{"type":"string"}},"required":["sessionId","messageId","requestId","text"],"additionalProperties":true},
           },
           strictCodec: {
             mode: 'strict',
             typeSymbol: 'dsh-conversation-tools/types#EditMessageRequest',
             create: _deepseek_ai_dsh_conversation_tools_conversationTools_edit_parameter_0_strict$schema,
-            jsonSchema: {"type":"object","properties":{"sessionId":{"type":"string"},"messageId":{"type":"string"},"requestId":{"type":"string"},"text":{"type":"string"}},"required":["sessionId","messageId","requestId","text"],"additionalProperties":false},
+            jsonSchema: {"type":"object","properties":{"sessionId":{"type":"string"},"messageId":{"type":"string"},"requestId":{"type":"string"},"text":{"type":"string"},"recoverySessionId":{"type":"string"}},"required":["sessionId","messageId","requestId","text"],"additionalProperties":false},
           },
         },
       ],
@@ -87,7 +89,7 @@ const $remote = createTypertRemoteInfo({
         description: 'the new Session, or an explicit recoverable child identity on partial failure.',
         jsonSchema: {"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":true},
       },
-      sourceLocation: {"file":"src/host/index.ts","line":100,"column":3},
+      sourceLocation: {"file":"src/host/index.ts","line":108,"column":3},
     },
     'conversationTools/snapshot': {
       service: 'conversationTools',
@@ -119,7 +121,7 @@ const $remote = createTypertRemoteInfo({
         description: 'its bookmarks and accessible retained versions.',
         jsonSchema: {"type":"object","properties":{"starredTurns":{"type":"array","items":{"type":"number"}},"versions":{"type":"array","items":{"type":"object","properties":{"sessionId":{"type":"string"},"createdAt":{"type":"number"}},"required":["sessionId","createdAt"],"additionalProperties":true}}},"required":["starredTurns","versions"],"additionalProperties":true},
       },
-      sourceLocation: {"file":"src/host/index.ts","line":47,"column":3},
+      sourceLocation: {"file":"src/host/index.ts","line":55,"column":3},
     },
     'conversationTools/star': {
       service: 'conversationTools',
@@ -151,7 +153,7 @@ const $remote = createTypertRemoteInfo({
         description: 'annotations after durable storage.',
         jsonSchema: {"type":"object","properties":{"starredTurns":{"type":"array","items":{"type":"number"}},"versions":{"type":"array","items":{"type":"object","properties":{"sessionId":{"type":"string"},"createdAt":{"type":"number"}},"required":["sessionId","createdAt"],"additionalProperties":true}}},"required":["starredTurns","versions"],"additionalProperties":true},
       },
-      sourceLocation: {"file":"src/host/index.ts","line":74,"column":3},
+      sourceLocation: {"file":"src/host/index.ts","line":82,"column":3},
     },
   },
 }, z)
@@ -209,7 +211,7 @@ export const TYPERT = {
           },
           {
             "name": "EditMessageRequest",
-            "declaration": "export interface EditMessageRequest {\n    readonly sessionId: SessionId;\n    readonly messageId: MessageId;\n    readonly requestId: SessionRequestId;\n    readonly text: string;\n}"
+            "declaration": "export interface EditMessageRequest {\n    readonly sessionId: SessionId;\n    readonly messageId: MessageId;\n    readonly requestId: SessionRequestId;\n    readonly text: string;\n    readonly recoverySessionId?: SessionId;\n}"
           },
           {
             "name": "EditMessageResult",
