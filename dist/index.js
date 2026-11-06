@@ -267,6 +267,14 @@ var ConversationTools = class extends (_b = TypertRemoteService) {
                 child.inbox.clear();
                 const selection = source.model.current();
                 if (selection !== void 0) child.model.select(selection);
+                const permission = this.ctx.permissionPresets.current(source.session);
+                if (permission !== "custom") this.ctx.permissionPresets.set(child.session, permission);
+                else {
+                  const sandbox = observation.events.findLast((event) => event.type === "sandbox/mode");
+                  const approval = observation.events.findLast((event) => event.type === "approval/policy");
+                  if (sandbox?.type === "sandbox/mode") child.session.append("sandbox/mode", sandbox.data);
+                  if (approval?.type === "approval/policy") child.session.append("approval/policy", approval.data);
+                }
                 await this.ctx.workingDirectory.set(child, this.ctx.workingDirectory.get(source.session));
                 const principal = principalOf(this.ctx.invocation);
                 child.followup(createUserMessage({ content: plan.content, source: {
@@ -318,7 +326,7 @@ __decorateElement(_init, 1, "snapshot", _snapshot_dec, ConversationTools);
 __decorateElement(_init, 1, "star", _star_dec, ConversationTools);
 __decorateElement(_init, 1, "edit", _edit_dec, ConversationTools);
 __decoratorMetadata(_init, ConversationTools);
-__publicField(ConversationTools, "inject", ["storageDomain", "sessionController", "sessionQuery", "sessions", "agents", "workingDirectory", "remoteAccess", "workspaceRegistry"]);
+__publicField(ConversationTools, "inject", ["storageDomain", "sessionController", "sessionQuery", "sessions", "agents", "workingDirectory", "remoteAccess", "workspaceRegistry", "permissionPresets"]);
 export {
   ConversationTools as default
 };

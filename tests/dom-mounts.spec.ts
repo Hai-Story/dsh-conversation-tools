@@ -19,7 +19,7 @@ function fixture() {
 }
 it('mounts next to Copy, decorates the matching rail, and leaves other sessions alone',async()=>{
   const f=fixture()
-  await vi.waitFor(()=>expect(f.mounts()).toHaveLength(5))
+  await vi.waitFor(()=>expect(f.mounts()).toHaveLength(4))
   const action=f.mounts().find(m=>m.kind==='actions')!
   expect(action.element.previousElementSibling?.textContent).toBe('Copy')
   expect(document.querySelector('[data-conversation-session="other"] [data-dsh-tools-mount]')).toBeNull()
@@ -34,20 +34,20 @@ it('releases removed rows and observes newly loaded rows without reading their t
   const f=fixture()
   await vi.waitFor(()=>expect(f.mounts().some(m=>m.kind==='actions')).toBe(true))
   document.querySelector('[data-conversation-session="one"] [data-chat-node-key]')?.remove()
-  await vi.waitFor(()=>expect(f.mounts().filter(m=>m.kind==='actions'||m.kind==='editor')).toHaveLength(0))
+  await vi.waitFor(()=>expect(f.mounts().filter(m=>m.kind==='actions')).toHaveLength(0))
   expect(f.mounts().filter(m=>m.kind==='mark')).toHaveLength(2)
 })
 
-it('keeps editor mounts when streaming adds rows or refreshes the turn outline', async () => {
+it('keeps action mounts when streaming adds rows or refreshes the turn outline', async () => {
   const f=fixture()
-  await vi.waitFor(()=>expect(f.mounts().some(m=>m.kind==='editor')).toBe(true))
-  const editor=f.mounts().find(m=>m.kind==='editor')!.element
+  await vi.waitFor(()=>expect(f.mounts().some(m=>m.kind==='actions')).toBe(true))
+  const editor=f.mounts().find(m=>m.kind==='actions')!.element
   const input=document.createElement('textarea')
   editor.append(input)
   input.value='unsent draft'
   input.focus()
   adapter?.update([{key:'user:1',messageId:'message-1',turn:1,text:'Original text'}],[1,2,3])
-  await vi.waitFor(()=>expect(f.mounts().find(m=>m.kind==='editor')?.element).toBe(editor))
+  await vi.waitFor(()=>expect(f.mounts().find(m=>m.kind==='actions')?.element).toBe(editor))
   expect(input.value).toBe('unsent draft')
   expect(document.activeElement).toBe(input)
 })

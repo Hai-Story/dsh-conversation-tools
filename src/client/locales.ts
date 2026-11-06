@@ -3,8 +3,8 @@ export const NS = 'conversationTools'
 /** English dictionary. */
 export const en = {
   star: 'Star this exchange', unstar: 'Remove star', starred: 'Starred exchange', edit: 'Edit message',
-  save: 'Save and regenerate', cancel: 'Cancel', saving: 'Saving…',
-  retained: 'Editing leaves the current task running. Submit to stop it and regenerate. Previous replies are kept; file and command effects are not undone.',
+  editing: 'Editing a sent message', cancelEdit: 'Cancel edit', saving: 'Stopping and regenerating…',
+  submitHint: 'Send to regenerate · previous version kept',
   failed: 'Could not save. Your draft is preserved; retry with the same text.',
   loadFailed: 'Could not load conversation annotations', retry: 'Retry',
   versions: 'Conversation versions', version: 'Version {number}',
@@ -16,8 +16,8 @@ export type ToolsKey = keyof typeof en
 /** Simplified Chinese dictionary. */
 export const zh: Record<ToolsKey, string> = {
   star: '星标这轮问答', unstar: '取消星标', starred: '已星标的问答', edit: '编辑消息',
-  save: '保存并重新生成', cancel: '取消', saving: '正在保存…',
-  retained: '编辑时原任务继续运行，提交后才会中断并重新生成。旧对话保留，已执行的文件修改和命令不会撤销',
+  editing: '正在编辑已发送消息', cancelEdit: '取消编辑', saving: '正在停止并重新生成…',
+  submitHint: '发送后重新生成 · 保留旧版本',
   failed: '保存失败，草稿已保留，请保持内容不变后重试',
   loadFailed: '无法加载对话标记', retry: '重试',
   versions: '对话历史版本', version: '版本 {number}',

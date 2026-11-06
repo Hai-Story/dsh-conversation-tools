@@ -18,13 +18,11 @@
 .action:disabled, .action[aria-disabled='true'] { opacity: 0.4; cursor: default; }
 .star { font-size: 19px; line-height: 1; }
 .action svg { width: 15px; height: 15px; }
-.editor { margin-block: 8px 16px; padding: 12px; border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-sm); }
-.fieldset { padding: 0; margin: 0; border: 0; min-width: 0; }
-.hint { margin: 8px 0; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
-.buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .error { color: var(--dsw-alias-label-secondary); font-size: 12px; }
 .mark { position: absolute; left: 0; top: 50%; transform: translateY(-50%); font-size: 10px; line-height: 10px; color: var(--dsw-alias-label-primary); }
 .preview { margin-right: 6px; color: var(--dsw-alias-label-primary); }
 .versions { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .versions select { max-width: 160px; padding: 4px 8px; border: 0.5px solid var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-sm); background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; }
-.fieldset textarea { display: block; width: 100%; }
+.editNotice { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 0 4px 6px; color: var(--dsw-alias-label-secondary); font-size: 13px; box-sizing: border-box; width: calc(100% - 2 * var(--dsh-composer-side-clearance, 16px)); max-width: var(--dsh-composer-card-max-width, 100%); margin-inline: auto; }
+.editLabel { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; flex-wrap: wrap; }
+.editHint { color: var(--dsw-alias-label-tertiary); font-size: 12px; }

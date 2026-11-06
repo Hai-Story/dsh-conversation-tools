@@ -35,9 +35,8 @@ export class ToolsController {
   private disposed = false
   private generation = 0
 
-  /** @param remote - generated Remote namespace. @param sessionId - owner. @param open - reveal a retained version. */
-  constructor(private readonly remote: TypertClientRemote['conversationTools'], readonly sessionId: SessionId,
-    private readonly open: (id: SessionId) => Promise<void>) {}
+  /** @param remote - generated Remote namespace. @param sessionId - owner. */
+  constructor(private readonly remote: TypertClientRemote['conversationTools'], readonly sessionId: SessionId) {}
 
   /** Load once for all mounted message actions. @returns completion of the shared read. */
   ensure = (): Promise<void> => this.state.getSnapshot().loaded ? Promise.resolve() : this.refresh()
@@ -86,11 +85,9 @@ export class ToolsController {
     if (draft === null || draft.pending || draft.text === text) return
     this.update({ editing: { ...draft, text, requestId: randomUUID() as SessionRequestId, failed: false } })
   }
-  /** Cancel a local draft; a submission in flight must settle first. */
-  cancel = (): void => { if (!this.state.getSnapshot().editing?.pending) this.update({ editing: null }) }
-
   /** Submit or retry the unchanged draft; failure preserves both its text and request id. */
-  save = async (): Promise<void> => {
+  submit = async (text: string): Promise<SessionId | undefined> => {
+    this.change(text)
     const draft = this.state.getSnapshot().editing
     if (draft === null || draft.pending || draft.recoverableSessionId !== undefined || draft.text.trim() === '') return
     this.update({ editing: { ...draft, pending: true, failed: false } })
@@ -100,8 +97,7 @@ export class ToolsController {
       })
       if (!result.ok) throw result.error
       if (!this.isAlive()) return
-      await this.open(result.value.sessionId)
-      if (this.isAlive()) { this.update({ editing: null }); await this.refresh() }
+      return result.value.sessionId
     } catch (error) {
       const failure = remoteErrorOf(error)
       const recovery = failure?.code === 'conversationTools/incomplete' && failure.details.phase === 'link'
@@ -110,6 +106,9 @@ export class ToolsController {
         ...(recovery === undefined ? {} : { recoverableSessionId: recovery }) } })
     }
   }
+
+  /** Finish a settled or cancelled native-composer edit. */
+  complete = (): void => { this.update({ editing: null }) }
 
   /** Prevent late responses from publishing after plugin disposal. */
   dispose(): void { this.disposed = true }

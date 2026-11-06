@@ -1,56 +1,97 @@
-# dsh-conversation-tools
+# DSH Conversation Tools
 
-English | [中文](README.md)
+**Star important exchanges. Restart from any message.**
 
-Add **exchange stars** and **sent-message editing** to DeepSeek Harness. Edit any human message, including the first, continue from that point, and keep the original answers and later conversation available as previous versions.
+[中文](README.md) · English
 
-This is an independently installable plugin. It does not require modifying or rebuilding Harness, replace its message renderers, or add another branch button.
+[![Release](https://img.shields.io/github/v/release/Hai-Story/dsh-conversation-tools?include_prereleases&label=release)](https://github.com/Hai-Story/dsh-conversation-tools/releases) [![CI](https://github.com/Hai-Story/dsh-conversation-tools/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Hai-Story/dsh-conversation-tools/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-![Stars beside Copy and on the turn rail](docs/images/stars.png)
+`dsh-conversation-tools` adds **Star** and **Edit** beside Copy in DeepSeek Harness. Mark exchanges you want to revisit, or edit a sent message and regenerate from there while keeping the original conversation as a previous version.
 
-## Install
+![Annotated overview: 1 Star an exchange, 2 Edit a message, 3 Find the rail marker](docs/images/readme/overview.en.png)
 
-Tested with **DSH `0.2.2-rc.1`**. This early release does not claim compatibility with other host versions.
+[Install and update](#install-and-update) · [Star an exchange](#star-an-exchange) · [Edit a message](#edit-a-message) · [Previous versions](#previous-versions) · [Compatibility](#compatibility)
 
-Paste this source into the app's Add plugin dialog:
+## Install and update
+
+Tested host: **DSH `0.2.2-rc.1` Web**. This is an independent plugin; no Harness source changes or rebuild are required.
+
+Paste this source into DSH's **Add plugin** dialog:
 
 ```text
-github:Hai-Story/dsh-conversation-tools#v0.1.1
+github:Hai-Story/dsh-conversation-tools#v0.1.2
 ```
 
-Or install into the Web profile:
+Or install into the Web profile from the command line:
 
 ```sh
-dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.1"
+dsh plugin --profile web add "github:Hai-Story/dsh-conversation-tools#v0.1.2"
 ```
 
-Restart DSH after installation. Each release commits `dist/`, so installing from GitHub requires no build scripts.
+Use the same source or command to update an older installation, then restart DSH. Release versions include `dist/`, so installation requires no build scripts.
 
-For the official desktop app, use its plugin UI or its bundled `dsh` command with the `desktop` profile. The Web profile is separate. Automated browser tests cover the stock npm Web distribution; Electron installation has not been independently tested.
+<details>
+<summary>Installing in the official desktop app</summary>
 
-## Use
+Use the app's plugin UI, or its bundled `dsh` command with the `desktop` profile. Web and desktop profiles are separate; installing into `web` does not enable the plugin in desktop.
 
-Click the star beside Copy to bookmark the whole exchange. Both human and assistant controls, the turn rail, and its hover preview reflect the same saved state. Click again to remove it.
+Browser flows have been verified against the stock npm Web distribution. Electron installation has not been independently tested.
 
-Click Edit beside a sent human message, change its text, then choose **Save and regenerate**. Existing attachments remain. Earlier context is retained; the replaced answer and subsequent conversation are excluded from the new request. Saving opens the new version; the header's version selector restores the full original conversation.
+</details>
 
-![Inline message editor](docs/images/edit.png)
+## Star an exchange
 
-You can open the editor and change a draft while generation continues. Press Enter or click **Save and regenerate** to request cancellation, wait for the current task to stop, and submit the edited message. Shift+Enter adds a newline; IME confirmation and cancelling the edit do not interrupt the task. Editing changes conversation history only: it **does not undo file changes, commands, or other tool effects**.
+Click `☆` beside Copy to mark an **entire question-and-answer exchange** with `★`. The human and assistant controls share the same state, and the turn rail and its hover preview show the mark. Click again to remove it. Stars survive reloads and restarts.
 
-## Compatibility and implementation
+The action is called **Star** throughout the plugin: it marks an important exchange so you can find it again in a long conversation.
 
-The package exposes a Cordis bundle and generated Remote descriptors. Assistant actions and the version selector use existing slots. Since stock DSH has no user-action or rail-decoration slots, a session-scoped DOM adapter portals plugin-owned React controls beside the existing Copy button and into rail marks.
+## Edit a message
 
-It addresses `data-conversation-session`, `data-chat-node-key`, `data-clock`, and rail `data-index`. Message identities come from the Chat projection, never DOM text. Disposal removes only plugin-owned mounts and styles. This adapter depends on the tested host's DOM structure and must be revalidated for host upgrades.
+Edit any sent human message, **including the first**. Click Edit to load the message into the original bottom composer. Choose permissions and a model with its native menus, then press Enter or click the native Send arrow. Cancelling restores the draft that was there before editing.
 
-The service reuses existing `session/fork` and `session/create` operations. Stars and version relationships use the `conversation_tools` storage domain; original logs are never overwritten. Versions are separate Sessions in the same workspace and may appear in the ordinary list. They preserve the current working directory and model selection.
+![Annotated editor: 1 Native composer, 2 Permissions, 3 Model selection, 4 Send](docs/images/readme/editor.en.png)
 
-Limits: text edits only, attachments cannot be added or removed; other browser clients reconcile annotations on reload/reconnect; the host's rail remains hidden for single-turn conversations. English and Simplified Chinese UI copy are included.
+**You can edit during generation. The current task is interrupted only when you submit.**
 
-## Development
+| Action | What happens to the current task |
+| --- | --- |
+| Open the editor or change the draft | Keeps running |
+| Shift+Enter or IME confirmation | Keeps running; nothing is submitted |
+| Cancel the edit | Keeps running; the previous composer draft is restored |
+| Enter or the native Send button | Cancellation is requested; the edited message is submitted after the old task settles |
 
-Requires Node.js 24.9+ and pnpm 11.28.5.
+Regeneration uses the earlier context and the edited message. Existing attachments remain; the replaced answer and later messages are excluded from the new context. The working directory is preserved; the new version uses the current selections from the native permission and model menus.
+
+## Previous versions
+
+Submitting an edit opens the new version. Use the version selector at the top of the conversation to return to an old version and read its original answers and later messages.
+
+![Annotated history: 1 Conversation version selector, 2 Preserved original reply](docs/images/readme/versions.en.png)
+
+Versions are stored as separate Sessions in the same workspace and may also appear in the ordinary conversation list. Switching versions does not merge subsequent work.
+
+> Editing changes conversation context. It **does not undo file changes, commands, or other tool effects**.
+
+*Screenshots were captured from a running test conversation. Red outlines, numbers, and captions identify feature locations.*
+
+## Compatibility
+
+| Environment | Verification |
+| --- | --- |
+| Stock DSH `0.2.2-rc.1` Web | Installation and browser flows tested |
+| Official Electron desktop | Installation not independently tested |
+| Other DSH versions | No compatibility claim yet |
+
+Editing changes text only; attachments cannot be added or removed. Other browser clients reconcile stars on reload or reconnect. The host's turn rail stays hidden for single-turn conversations. English and Simplified Chinese UI copy are included.
+
+## Development and contributions
+
+Report problems or suggest improvements in [Issues](https://github.com/Hai-Story/dsh-conversation-tools/issues) or a pull request. For UI issues, include the DSH version and reproduction steps.
+
+<details>
+<summary>Local development and validation</summary>
+
+Requires Node.js 24.9+ and pnpm 11.28.5:
 
 ```sh
 corepack enable
@@ -61,12 +102,27 @@ pnpm exec playwright install chromium
 pnpm run test:browser
 ```
 
-The browser test installs into an isolated profile and starts the published npm DSH, substituting only the external model with a keyless fixture. It checks stars, first-message editing, future-context exclusion, preserved versions, reload, and narrow/dark layouts. Temporary state stays in ignored `.artifacts/`.
+The browser test installs the packed plugin into an isolated profile and starts stock npm DSH, substituting only the external model with a keyless fixture. It covers stars, first-message editing, future-context exclusion, version switching, reload, drafting during generation, button/Enter submission, IME confirmation, cancellation, duplicate submissions, native permission/model selection, and restoration of the prior draft. Temporary profiles and logs stay in Git-ignored `.artifacts/`.
 
-Remote interface changes require updating types and descriptors in `src/protocol/` together and exercising the end-to-end calls. Rebuild and commit `dist/` before release; CI checks that artifacts match the source.
+Remote interface changes require updating types and descriptors in `src/protocol/` together and exercising end-to-end calls. Rebuild and commit `dist/` before release; CI checks that artifacts match the source.
+
+Original screenshots and element coordinates are retained in `docs/images/readme/raw/`. See [screenshot notes](docs/screenshots.md) to regenerate the annotations.
+
+</details>
+
+<details>
+<summary>How does the plugin integrate with Harness?</summary>
+
+The package exposes a Cordis bundle and generated Remote descriptors. Assistant actions and the version selector use existing slots. A session-scoped DOM adapter mounts user-message controls and rail markers while keeping the original message renderers. Editing enters a temporary `/edit` mode in the original composer, reusing its permission/model controls, Send button, and IME handling. Cancelling or completing the edit restores the prior composer draft.
+
+The adapter addresses `data-conversation-session`, `data-chat-node-key`, `data-clock`, and rail `data-index`. Message identities come from Chat data, never DOM text. Disposal removes only plugin-owned mounts and styles, without changing host files. This depends on the tested host's UI structure and must be revalidated for host upgrades.
+
+Version creation reuses `session/fork` and `session/create`. Stars and version relationships use the `conversation_tools` storage domain; original logs are never overwritten.
+
+</details>
 
 ## References and license
 
-Packaging conventions were informed by [dsh-context](https://github.com/bowenliang123/dsh-context) and [dsh-nested-followups](https://github.com/sluminositys/dsh-nested-followups). Host interfaces come from [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
+The README's feature presentation, installation entry points, and screenshot organization were informed by [dsh-context](https://github.com/bowenliang123/dsh-context), [dsh-pocket](https://github.com/shaobeichen/dsh-pocket), and [DSH-better-sidebar](https://github.com/omdsh-dev/DSH-better-sidebar). Packaging conventions were informed by [dsh-nested-followups](https://github.com/sluminositys/dsh-nested-followups). Host interfaces come from [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-[MIT](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[MIT License](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md)

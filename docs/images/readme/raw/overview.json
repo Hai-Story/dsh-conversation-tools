@@ -1,0 +1,26 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "regions": {
+    "star": {
+      "x": 1163.6875,
+      "y": 140,
+      "width": 28,
+      "height": 28
+    },
+    "edit": {
+      "x": 1199.6875,
+      "y": 140,
+      "width": 28,
+      "height": 28
+    },
+    "rail": {
+      "x": 1393,
+      "y": 464,
+      "width": 10.28125,
+      "height": 10
+    }
+  }
+}
