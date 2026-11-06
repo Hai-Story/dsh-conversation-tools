@@ -1,6 +1,6 @@
 import type { ChatNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 /** Session-scoped controls portal into existing DSH chrome without replacing its renderers. */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-session-turn-outline/client'
@@ -32,11 +32,13 @@ export function ConversationToolsSurface(props: Props) {
     return [...result].sort((a, b) => a - b)
   }, [outline, loaded])
   const [mounts, setMounts] = useState<readonly Mount[]>([])
+  const adapterRef = useRef<ConversationMounts | null>(null)
   useEffect(() => {
     const adapter = new ConversationMounts(props.sessionId, setMounts)
-    adapter.update(messages, turns)
-    return () => { adapter.dispose() }
-  }, [props.sessionId, messages, turns])
+    adapterRef.current = adapter
+    return () => { adapterRef.current = null; adapter.dispose() }
+  }, [props.sessionId])
+  useEffect(() => { adapterRef.current?.update(messages, turns) }, [props.sessionId, messages, turns])
   return <>
     <VersionPicker {...props} />
     {mounts.map(mount => {

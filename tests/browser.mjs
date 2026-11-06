@@ -13,7 +13,7 @@ const run=await mkdtemp(join(root,'.artifacts','browser-'))
 const workspace=join(run,'workspace')
 await mkdir(workspace)
 const cli=join(root,'node_modules/@deepseek-ai/dsh/lib/bin.js')
-const env={...process.env,DSH_HOME:join(run,'home'),DSH_TELEMETRY_DISABLED:'1',DSH_CONVERSATION_TEST_REQUESTS:join(run,'requests.jsonl')}
+const env={...process.env,DSH_HOME:join(run,'home'),DSH_TELEMETRY_DISABLED:'1',DSH_CONVERSATION_TEST_REQUESTS:join(run,'requests.jsonl'),DSH_CONVERSATION_TEST_EVENTS:join(run,'model-events.jsonl')}
 const packed=JSON.parse(execFileSync('npm',['pack','--pack-destination',run,'--ignore-scripts','--json'],{cwd:root,env,encoding:'utf8'}))[0]
 execFileSync(process.execPath,[cli,'plugin','--profile','web','add',join(run,packed.filename)],{cwd:root,env,stdio:['ignore','pipe','pipe']})
 const patch=join(run,'test.patch.json')
@@ -96,9 +96,64 @@ try {
   await page.getByRole('textbox',{name:'Edit message',exact:true}).fill('中文多行消息\n保留历史版本')
   await page.screenshot({path:join(root,'docs/images/mobile.png')})
   await page.getByRole('button',{name:'Cancel',exact:true}).click()
+  // Exercise both submission gestures while the source model remains active.
+  await page.setViewportSize({width:1440,height:1000})
+  await page.emulateMedia({colorScheme:'light'})
+  const events=async()=>JSON.parse('['+(await readFile(env.DSH_CONVERSATION_TEST_EVENTS,'utf8')).trim().split('\n').join(',')+']')
+  const ticks=async prompt=>(await events()).filter(event=>event.prompt===prompt&&event.stage==='tick').length
+  const assertStillRunning=async prompt=>{
+    const before=await ticks(prompt)
+    await until(async()=>(await ticks(prompt))>before,'source continues while drafting')
+    assert.equal((await events()).some(event=>event.prompt===prompt&&event.stage==='aborted'),false)
+  }
+  for (const gesture of ['button','enter']) {
+    const prompt=`RUNNING_${gesture.toUpperCase()}`
+    const replacement=`EDITED_${gesture.toUpperCase()}`
+    const activeId=(await rpc('session/create',{cwd:workspace})).sessionId
+    await rpc('session/prompt',{sessionId:activeId,requestId:randomUUID(),mode:'queue',content:[{type:'text',text:prompt}]})
+    await until(async()=>(await ticks(prompt))>0,'running model')
+    const sidebar=page.getByRole('button',{name:'Open sidebar',exact:true})
+    if(await sidebar.isVisible())await sidebar.click()
+    await page.getByRole('treeitem').filter({hasText:prompt}).last().getByText(prompt,{exact:true}).click()
+    await page.getByText(`Streaming: ${prompt}`,{exact:false}).waitFor()
+    const inputRow=page.locator('[data-chat-flow-kind="user"]').first()
+    await inputRow.hover()
+    await inputRow.getByRole('button',{name:'Edit message',exact:true}).click()
+    const editor=page.getByRole('textbox',{name:'Edit message',exact:true})
+    await editor.fill('Draft only')
+    await assertStillRunning(prompt)
+    await editor.press('Shift+Enter')
+    assert.match(await editor.inputValue(),/\n/)
+    await editor.dispatchEvent('keydown',{key:'Enter',code:'Enter',isComposing:true,keyCode:229,bubbles:true})
+    await assertStillRunning(prompt)
+    await page.getByRole('button',{name:'Cancel',exact:true}).click()
+    await assertStillRunning(prompt)
+    // Invalid submissions also leave the source running.
+    await assert.rejects(rpc('conversationTools/edit',{sessionId:activeId,messageId:'missing',requestId:randomUUID(),text:'replacement'}),/missing-message/)
+    await assertStillRunning(prompt)
+    await inputRow.hover()
+    await inputRow.getByRole('button',{name:'Edit message',exact:true}).click()
+    await editor.fill(replacement)
+    assert.equal(await page.getByRole('button',{name:'Save and regenerate',exact:true}).isEnabled(),true)
+    await assertStillRunning(prompt)
+    if(gesture==='button')await page.getByRole('button',{name:'Save and regenerate',exact:true}).click()
+    else await editor.press('Enter')
+    await page.getByText(`Reply: ${replacement}`,{exact:true}).waitFor()
+    const lifecycle=await events()
+    const stopped=lifecycle.findIndex(event=>event.prompt===prompt&&event.stage==='settled')
+    const restarted=lifecycle.findIndex(event=>event.prompt===replacement&&event.stage==='started')
+    assert(stopped>=0&&restarted>stopped,'replacement starts only after the previous model settles')
+    assert.equal(lifecycle.filter(event=>event.prompt===prompt&&event.stage==='aborted').length,1)
+    assert.equal(lifecycle.filter(event=>event.prompt===replacement&&event.stage==='started').length,1)
+    const editedId=await versions.inputValue()
+    await versions.selectOption(activeId)
+    await page.getByText(prompt,{exact:true}).waitFor()
+    await versions.selectOption(editedId)
+    await page.getByText(`Reply: ${replacement}`,{exact:true}).waitFor()
+  }
   assert.deepEqual(errors,[])
-  await writeFile(join(run,'result.json'),JSON.stringify({host:'0.2.2-rc.1',source,child,requests:requests.length,passed:true},null,2))
-  console.log('PASS: stock DSH installation, stars, first-message editing, excluded future context, retained versions, reload, and narrow/dark layout.')
+  await writeFile(join(run,'result.json'),JSON.stringify({host:'0.2.2-rc.1',source,child,requests:(await events()).filter(event=>event.stage==='started').length,passed:true},null,2))
+  console.log('PASS: stock DSH installation, stars, first-message editing, excluded future context, retained versions, reload, narrow/dark layout, and submit-only interruption by button/Enter.')
 } catch(error) {
   if(page) {await page.screenshot({path:join(run,'failure.png')}).catch(()=>{});await writeFile(join(run,'page.txt'),await page.locator('body').innerText().catch(()=>''))}
   console.error('Browser artifacts:',run)

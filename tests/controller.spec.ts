@@ -42,3 +42,20 @@ it('cancelling an edit never submits a model request', () => {
   expect(f.edit).not.toHaveBeenCalled()
   expect(f.controller.state.getSnapshot().editing).toBeNull()
 })
+
+it('typing and cancelling stay local, and duplicate submissions share one pending edit', async () => {
+  const f = fixture()
+  const pending = Promise.withResolvers<{ ok: true; value: { sessionId: ReturnType<typeof SessionId> } }>()
+  f.edit.mockReturnValueOnce(pending.promise)
+  f.controller.begin(MessageId('first-message'), 'original')
+  f.controller.change('replacement')
+  expect(f.edit).not.toHaveBeenCalled()
+  const first = f.controller.save()
+  await f.controller.save()
+  expect(f.edit).toHaveBeenCalledOnce()
+  f.controller.cancel()
+  expect(f.controller.state.getSnapshot().editing?.pending).toBe(true)
+  pending.resolve({ ok: true, value: { sessionId: SessionId('child') } })
+  await first
+  expect(f.open).toHaveBeenCalledExactlyOnceWith('child')
+})

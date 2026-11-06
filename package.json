@@ -1,6 +1,6 @@
 {
   "name": "dsh-conversation-tools",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Star exchanges and edit any sent user message while retaining previous conversation versions in DeepSeek Harness.",
   "type": "module",
   "license": "MIT",
